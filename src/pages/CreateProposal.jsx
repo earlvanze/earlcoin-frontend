@@ -1,126 +1,216 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
     import { motion } from 'framer-motion';
     import { useNavigate } from 'react-router-dom';
     import { supabase } from '@/lib/customSupabaseClient';
-    import { useAuth } from '@/contexts/SupabaseAuthContext';
+    import { useAuth } from '@/contexts/AuthContext.jsx';
+    import { useAppContext } from '@/contexts/AppContext.jsx';
     import PageTitle from '@/components/PageTitle';
     import { Button } from '@/components/ui/button';
-    import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
     import { Input } from '@/components/ui/input';
-    import { Label } from '@/components/ui/label';
     import { Textarea } from '@/components/ui/textarea';
+    import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
     import { useToast } from '@/components/ui/use-toast';
     import { PlusCircle, XCircle, Loader2 } from 'lucide-react';
+    import { v4 as uuidv4 } from 'uuid';
+    import algosdk from 'algosdk';
+    import { ALGOD_URL, EARL_ASA_ID, GOV_APP_ID } from '@/lib/config';
 
     const CreateProposal = () => {
-      const { user } = useAuth();
-      const navigate = useNavigate();
-      const { toast } = useToast();
-      const [title, setTitle] = useState('');
-      const [description, setDescription] = useState('');
-      const [options, setOptions] = useState(['', '']);
-      const [loading, setLoading] = useState(false);
+        const [title, setTitle] = useState('');
+        const [description, setDescription] = useState('');
+        const [options, setOptions] = useState([{ id: uuidv4(), text: '' }, { id: uuidv4(), text: '' }]);
+        const [loading, setLoading] = useState(false);
+        const [voteDurationHours, setVoteDurationHours] = useState('72');
+        const [proposalFile, setProposalFile] = useState(null);
+        const { user } = useAuth();
+        const { accountAddress, signTransactions, handleConnect } = useAppContext();
+        const navigate = useNavigate();
+        const { toast } = useToast();
+        const fileInputRef = useRef(null);
 
-      const handleOptionChange = (index, value) => {
-        const newOptions = [...options];
-        newOptions[index] = value;
-        setOptions(newOptions);
-      };
+        const handleAddOption = () => {
+            if (options.length < 10) {
+                setOptions([...options, { id: uuidv4(), text: '' }]);
+            }
+        };
 
-      const addOption = () => {
-        setOptions([...options, '']);
-      };
+        const handleRemoveOption = (id) => {
+            setOptions(options.filter(option => option.id !== id));
+        };
 
-      const removeOption = (index) => {
-        if (options.length > 2) {
-          const newOptions = options.filter((_, i) => i !== index);
-          setOptions(newOptions);
-        }
-      };
+        const handleOptionChange = (id, text) => {
+            setOptions(options.map(option => (option.id === id ? { ...option, text } : option)));
+        };
 
-      const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (!user) {
-          toast({ variant: 'destructive', title: 'Authentication Error', description: 'You must be logged in to create a proposal.' });
-          return;
-        }
+        const handleSubmit = async (e) => {
+            e.preventDefault();
+            if (!user) {
+                toast({ variant: 'destructive', title: 'Not authenticated', description: 'You must be logged in to create a proposal.' });
+                return;
+            }
 
-        const finalOptions = options.filter(opt => opt.trim() !== '');
-        if (finalOptions.length < 2) {
-            toast({ variant: 'destructive', title: 'Invalid Options', description: 'Please provide at least two non-empty options.' });
-            return;
-        }
+            const validOptions = options.filter(o => o.text.trim() !== '');
+            if (title.trim() === '' || description.trim() === '' || validOptions.length < 2) {
+                toast({ variant: 'destructive', title: 'Invalid input', description: 'Please fill in the title, description, and at least two options.' });
+                return;
+            }
 
-        setLoading(true);
-        try {
-          const { error } = await supabase.from('proposals').insert({
-            title,
-            description,
-            options: finalOptions,
-            author_id: user.id,
-          });
+            if (!voteDurationHours || Number(voteDurationHours) <= 0) {
+                toast({ variant: 'destructive', title: 'Invalid duration', description: 'Set a valid voting duration.' });
+                return;
+            }
 
-          if (error) throw error;
+            setLoading(true);
 
-          toast({ title: 'Proposal Created!', description: 'Your proposal has been successfully submitted.' });
-          navigate('/proposals');
-        } catch (error) {
-          toast({ variant: 'destructive', title: 'Error Creating Proposal', description: error.message });
-        } finally {
-          setLoading(false);
-        }
-      };
+            try {
+                let filePath = null;
+                let fileHashHex = null;
 
-      return (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -20 }}
-          transition={{ duration: 0.3 }}
-          className="container mx-auto"
-        >
-          <PageTitle title="Create a New Proposal" description="Shape the future of the DAO by submitting your proposal." />
-          <div className="flex justify-center">
-            <Card className="w-full max-w-3xl">
-              <CardHeader>
-                <CardTitle>New Proposal Details</CardTitle>
-                <CardDescription>Fill out the form below to submit your proposal for voting.</CardDescription>
-              </CardHeader>
-              <form onSubmit={handleSubmit}>
-                <CardContent className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="title">Proposal Title</Label>
-                    <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g., Invest in a new DeFi protocol" required />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="description">Description</Label>
-                    <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Provide a detailed description of your proposal..." required />
-                  </div>
-                  <div className="space-y-4">
-                    <Label>Voting Options (Ranked Choice)</Label>
-                    {options.map((option, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <Input value={option} onChange={(e) => handleOptionChange(index, e.target.value)} placeholder={`Option ${index + 1}`} required />
-                        {options.length > 2 && (
-                          <Button type="button" variant="ghost" size="icon" onClick={() => removeOption(index)}>
-                            <XCircle className="h-5 w-5 text-red-500" />
-                          </Button>
-                        )}
-                      </div>
-                    ))}
-                    <Button type="button" variant="outline" onClick={addOption}>
-                      <PlusCircle className="mr-2 h-4 w-4" /> Add Option
-                    </Button>
-                  </div>
-                  <Button type="submit" className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white" disabled={loading}>
-                    {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Submit Proposal'}
-                  </Button>
-                </CardContent>
-              </form>
-            </Card>
-          </div>
-        </motion.div>
-      );
+                if (proposalFile) {
+                    const buffer = await proposalFile.arrayBuffer();
+                    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+                    const hashArray = Array.from(new Uint8Array(hashBuffer));
+                    fileHashHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+
+                    const fileKey = `${user.id}/${Date.now()}-${proposalFile.name}`;
+                    const { error: uploadError } = await supabase.storage
+                        .from('proposals')
+                        .upload(fileKey, proposalFile);
+
+                    if (uploadError) {
+                        throw uploadError;
+                    }
+                    filePath = fileKey;
+                }
+
+                const nowTs = Math.floor(Date.now() / 1000);
+                const durationSec = Math.floor(Number(voteDurationHours) * 3600);
+                const startTs = nowTs;
+                const endTs = nowTs + Math.max(1, durationSec);
+
+                let onchainTxId = null;
+
+                if (GOV_APP_ID && accountAddress) {
+                    const algodClient = new algosdk.Algodv2('', ALGOD_URL, '');
+                    const suggestedParams = await algodClient.getTransactionParams().do();
+                    const encoder = new TextEncoder();
+                    const hashBytes = fileHashHex
+                        ? Uint8Array.from(fileHashHex.match(/.{1,2}/g).map((b) => parseInt(b, 16)))
+                        : new Uint8Array(32);
+
+                    const appCallTxn = algosdk.makeApplicationNoOpTxnFromObject({
+                        sender: accountAddress,
+                        appIndex: GOV_APP_ID,
+                        appArgs: [
+                            encoder.encode('propose'),
+                            hashBytes,
+                            algosdk.encodeUint64(startTs),
+                            algosdk.encodeUint64(endTs),
+                            algosdk.encodeUint64(validOptions.length)
+                        ],
+                        foreignAssets: [EARL_ASA_ID],
+                        suggestedParams
+                    });
+
+                    const signed = await signTransactions([[{ txn: appCallTxn, signers: [accountAddress] }]]);
+                    const { txId } = await algodClient.sendRawTransaction(signed).do();
+                    onchainTxId = txId;
+                }
+
+                const { error } = await supabase
+                    .from('proposals')
+                    .insert([{
+                        title,
+                        description,
+                        author_id: user.id,
+                        options: validOptions,
+                        status: 'active',
+                        file_path: filePath,
+                        file_hash: fileHashHex,
+                        vote_start_ts: startTs,
+                        vote_end_ts: endTs,
+                        onchain_tx_id: onchainTxId
+                    }]);
+
+                if (error) {
+                    throw error;
+                }
+
+                toast({ title: 'Proposal created!', description: 'Your proposal is now live for voting.' });
+                navigate('/proposals');
+            } catch (error) {
+                toast({ variant: 'destructive', title: 'Error creating proposal', description: error.message });
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        return (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                <PageTitle title="Create Proposal" description="Shape the future of the DAO by submitting a new proposal." />
+
+                <Card className="max-w-2xl mx-auto">
+                    <CardHeader>
+                        <CardTitle>New Proposal</CardTitle>
+                        <CardDescription>Fill out the details below. Once submitted, it will be open for votes.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <form onSubmit={handleSubmit} className="space-y-6">
+                            <div className="space-y-2">
+                                <label htmlFor="title" className="font-medium">Title</label>
+                                <Input id="title" placeholder="E.g., Fund a new marketing campaign" value={title} onChange={(e) => setTitle(e.target.value)} required />
+                            </div>
+                            <div className="space-y-2">
+                                <label htmlFor="description" className="font-medium">Description</label>
+                                <Textarea id="description" placeholder="Provide a detailed explanation of your proposal..." value={description} onChange={(e) => setDescription(e.target.value)} required />
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label htmlFor="voteDuration" className="font-medium">Voting Duration (hours)</label>
+                                    <Input id="voteDuration" type="number" min="1" value={voteDurationHours} onChange={(e) => setVoteDurationHours(e.target.value)} required />
+                                </div>
+                                <div className="space-y-2">
+                                    <label htmlFor="proposalFile" className="font-medium">Attach File (optional)</label>
+                                    <Input id="proposalFile" type="file" ref={fileInputRef} onChange={(e) => setProposalFile(e.target.files?.[0] || null)} />
+                                </div>
+                            </div>
+                            <div className="space-y-3">
+                                <label className="font-medium">Voting Options</label>
+                                {options.map((option, index) => (
+                                    <div key={option.id} className="flex items-center gap-2">
+                                        <Input
+                                            placeholder={`Option ${index + 1}`}
+                                            value={option.text}
+                                            onChange={(e) => handleOptionChange(option.id, e.target.value)}
+                                        />
+                                        {options.length > 2 && (
+                                            <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveOption(option.id)}>
+                                                <XCircle className="h-5 w-5 text-destructive" />
+                                            </Button>
+                                        )}
+                                    </div>
+                                ))}
+                                {options.length < 10 && (
+                                    <Button type="button" variant="outline" size="sm" onClick={handleAddOption} className="mt-2">
+                                        <PlusCircle className="mr-2 h-4 w-4" /> Add Option
+                                    </Button>
+                                )}
+                            </div>
+                            <div className="flex justify-end pt-4">
+                                <Button type="submit" disabled={loading}>
+                                    {loading ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Submitting...
+                                        </>
+                                    ) : 'Submit Proposal'}
+                                </Button>
+                            </div>
+                        </form>
+                    </CardContent>
+                </Card>
+            </motion.div>
+        );
     };
 
     export default CreateProposal;
