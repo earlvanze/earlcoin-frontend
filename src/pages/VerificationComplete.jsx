@@ -167,6 +167,12 @@ const VerificationComplete = () => {
                 const errMsg = error?.message || data?.error?.message || data?.error || 'Mint failed';
                 throw new Error(errMsg);
             }
+
+            if (data?.status === 'pending' && !data?.assetId) {
+                toast({ title: 'Mint Submitted', description: 'Your VNFT mint was submitted and may take a minute to confirm. If you see it in your wallet, click “I already have a VNFT — check wallet”.' });
+                return;
+            }
+
             const assetId = data?.assetId;
             setNftAssetId(assetId);
             if (assetId && user?.id) {
