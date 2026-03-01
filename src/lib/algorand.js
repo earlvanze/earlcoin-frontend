@@ -24,6 +24,13 @@ export async function hasAsset(accountAddress, assetId) {
 
 export async function getVnftAssetId(accountAddress) {
   if (!accountAddress || !VNFT_ADMIN_ADDRESS) return null;
+
+  const matchesVnft = (params) => (
+    params &&
+    params['unit-name'] === 'VNFT' &&
+    (params.manager === VNFT_ADMIN_ADDRESS || params.creator === VNFT_ADMIN_ADDRESS)
+  );
+
   try {
     const acct = await indexerClient.lookupAccountByID(accountAddress).do();
     const assets = acct?.account?.assets || [];
@@ -31,16 +38,29 @@ export async function getVnftAssetId(accountAddress) {
       if (!a['asset-id'] || (a.amount ?? 0) === 0) continue;
       const asset = await indexerClient.lookupAssetByID(a['asset-id']).do();
       const params = asset?.asset?.params || {};
-      if (
-        params['unit-name'] === 'VNFT' &&
-        (params.manager === VNFT_ADMIN_ADDRESS || params.creator === VNFT_ADMIN_ADDRESS)
-      ) {
+      if (matchesVnft(params)) {
+        return a['asset-id'];
+      }
+    }
+  } catch {
+    // fallback to algod
+  }
+
+  try {
+    const acct = await algodClient.accountInformation(accountAddress).do();
+    const assets = acct?.assets || [];
+    for (const a of assets) {
+      if (!a['asset-id'] || (a.amount ?? 0) === 0) continue;
+      const asset = await algodClient.getAssetByID(a['asset-id']).do();
+      const params = asset?.params || {};
+      if (matchesVnft(params)) {
         return a['asset-id'];
       }
     }
   } catch {
     return null;
   }
+
   return null;
 }
 
