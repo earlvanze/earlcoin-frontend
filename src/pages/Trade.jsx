@@ -193,8 +193,8 @@ const TradeForm = ({ price, setPrice }) => {
       const suggestedParams = await algodClient.getTransactionParams().do();
 
       const optInTxn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
-        from: accountAddress,
-        to: accountAddress,
+        sender: accountAddress,
+        receiver: accountAddress,
         amount: 0,
         assetIndex: assetId,
         suggestedParams
@@ -314,15 +314,15 @@ const TradeForm = ({ price, setPrice }) => {
 
       if (activeTab === 'buy') {
         payTxn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
-          from: accountAddress,
-          to: DAO_TREASURY_WALLET,
+          sender: accountAddress,
+          receiver: DAO_TREASURY_WALLET,
           amount: usdcAmountMicroAlgos,
           assetIndex: USDC_ASA_ID,
           suggestedParams,
         });
 
         appCallTxn = algosdk.makeApplicationNoOpTxnFromObject({
-          from: accountAddress,
+          sender: accountAddress,
           appIndex: GOV_APP_ID,
           appArgs: [
             encoder.encode("trade"),
@@ -333,15 +333,15 @@ const TradeForm = ({ price, setPrice }) => {
         });
       } else {
         payTxn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
-          from: accountAddress,
-          to: DAO_TREASURY_WALLET,
+          sender: accountAddress,
+          receiver: DAO_TREASURY_WALLET,
           amount: earlAmountMicroAlgos,
           assetIndex: EARL_ASA_ID,
           suggestedParams,
         });
 
         appCallTxn = algosdk.makeApplicationNoOpTxnFromObject({
-          from: accountAddress,
+          sender: accountAddress,
           appIndex: GOV_APP_ID,
           appArgs: [
             encoder.encode("trade"),
