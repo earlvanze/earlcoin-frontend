@@ -108,6 +108,26 @@ const VerificationComplete = () => {
     }, [user]);
 
     useEffect(() => {
+        if (!accountAddress || status !== 'verified') return;
+        let cancelled = false;
+        const checkExisting = async () => {
+            try {
+                const owns = await hasVnft(accountAddress);
+                if (!cancelled && owns) {
+                    setStatus('minted');
+                    setHasVerificationNft(true);
+                }
+            } catch {
+                // ignore
+            }
+        };
+        checkExisting();
+        return () => {
+            cancelled = true;
+        };
+    }, [accountAddress, status, setHasVerificationNft]);
+
+    useEffect(() => {
         const checkOptIn = async () => {
             if (!accountAddress || !nftAssetId) {
                 setOptedIn(false);
