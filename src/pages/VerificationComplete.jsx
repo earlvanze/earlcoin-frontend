@@ -25,6 +25,7 @@ const VerificationComplete = () => {
     const [claiming, setClaiming] = useState(false);
     const [nftAssetId, setNftAssetId] = useState(null);
     const [optedIn, setOptedIn] = useState(false);
+    const [profileVnftWallet, setProfileVnftWallet] = useState(null);
     const navigate = useNavigate();
     const intervalRef = useRef(null);
 
@@ -108,6 +109,25 @@ const VerificationComplete = () => {
     }, [user]);
 
     useEffect(() => {
+        if (!user) return;
+        const loadProfileVnft = async () => {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('vnft_asset_id, vnft_wallet')
+                .eq('id', user.id)
+                .single();
+            if (error) return;
+            if (data?.vnft_asset_id) {
+                setNftAssetId(Number(data.vnft_asset_id));
+            }
+            if (data?.vnft_wallet) {
+                setProfileVnftWallet(data.vnft_wallet);
+            }
+        };
+        loadProfileVnft();
+    }, [user]);
+
+    useEffect(() => {
         if (!accountAddress || status !== 'verified') return;
         let cancelled = false;
         const checkExisting = async () => {
@@ -133,6 +153,24 @@ const VerificationComplete = () => {
     }, [accountAddress, status, setHasVerificationNft, user]);
 
     useEffect(() => {
+        if (!accountAddress || !nftAssetId || status !== 'verified') return;
+        const checkHolding = async () => {
+            try {
+                const acct = await algodClient.accountInformation(accountAddress).do();
+                const assets = acct?.assets || [];
+                const holding = assets.find((a) => a['asset-id'] === Number(nftAssetId));
+                if (holding && (holding.amount ?? 0) > 0) {
+                    setStatus('minted');
+                    setHasVerificationNft(true);
+                }
+            } catch {
+                // ignore
+            }
+        };
+        checkHolding();
+    }, [accountAddress, nftAssetId, status, setHasVerificationNft]);
+
+    useEffect(() => {
         const checkOptIn = async () => {
             if (!accountAddress || !nftAssetId) {
                 setOptedIn(false);
@@ -141,13 +179,19 @@ const VerificationComplete = () => {
             try {
                 const acct = await algodClient.accountInformation(accountAddress).do();
                 const assets = acct?.assets || [];
-                setOptedIn(assets.some((a) => a['asset-id'] === Number(nftAssetId)));
+                const holding = assets.find((a) => a['asset-id'] === Number(nftAssetId));
+                const opted = !!holding;
+                setOptedIn(opted);
+                if (holding && (holding.amount ?? 0) > 0) {
+                    setStatus('minted');
+                    setHasVerificationNft(true);
+                }
             } catch {
                 setOptedIn(false);
             }
         };
         checkOptIn();
-    }, [accountAddress, nftAssetId]);
+    }, [accountAddress, nftAssetId, setHasVerificationNft]);
 
     const handleCheckWallet = async () => {
         if (!accountAddress) {
@@ -190,6 +234,25 @@ const VerificationComplete = () => {
         }
         setMinting(true);
         try {
+            const { data: profileData } = await supabase
+                .from('profiles')
+                .select('vnft_asset_id, vnft_wallet')
+                .eq('id', user?.id)
+                .single();
+            if (profileData?.vnft_asset_id) {
+                const assetId = Number(profileData.vnft_asset_id);
+                setNftAssetId(assetId);
+                if (user?.id) {
+                    localStorage.setItem(`vnft_asset_id_${user.id}`, String(assetId));
+                }
+                if (profileData.vnft_wallet && profileData.vnft_wallet === accountAddress) {
+                    setStatus('minted');
+                    setHasVerificationNft(true);
+                }
+                toast({ title: 'VNFT Assigned', description: `Asset ID: ${assetId}. If you don't see it, opt-in and claim.` });
+                return;
+            }
+
             const existingAssetId = await getVnftAssetId(accountAddress);
             if (existingAssetId) {
                 setNftAssetId(existingAssetId);
@@ -216,7 +279,7 @@ const VerificationComplete = () => {
                 return;
             }
 
-            if (data?.status === 'already_minted' && data?.assetId) {
+            if ((data?.status === 'already_minted' || data?.status === 'already_assigned') && data?.assetId) {
                 setNftAssetId(data.assetId);
                 if (user?.id) {
                     localStorage.setItem(`vnft_asset_id_${user.id}`, String(data.assetId));
