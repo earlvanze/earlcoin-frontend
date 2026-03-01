@@ -42,6 +42,31 @@ import React, { useState, useRef } from 'react';
             setOptions(options.map(option => (option.id === id ? { ...option, text } : option)));
         };
 
+        const decodeGlobalState = (state = []) => {
+            const decoded = {};
+            state.forEach(({ key, value }) => {
+                const k = atob(key);
+                decoded[k] = value.type === 1 ? atob(value.bytes) : value.uint;
+            });
+            return decoded;
+        };
+
+        const encodeUint64 = (value) => {
+            const bytes = new Uint8Array(8);
+            const view = new DataView(bytes.buffer);
+            view.setBigUint64(0, BigInt(value));
+            return bytes;
+        };
+
+        const boxNameFor = (prefix, id) => {
+            const prefixBytes = new TextEncoder().encode(prefix);
+            const idBytes = encodeUint64(id);
+            const out = new Uint8Array(prefixBytes.length + idBytes.length);
+            out.set(prefixBytes, 0);
+            out.set(idBytes, prefixBytes.length);
+            return out;
+        };
+
         const handleSubmit = async (e) => {
             e.preventDefault();
             if (!user) {
@@ -89,9 +114,24 @@ import React, { useState, useRef } from 'react';
                 const endTs = nowTs + Math.max(1, durationSec);
 
                 let onchainTxId = null;
+                let onchainProposalId = null;
 
-                if (GOV_APP_ID && accountAddress) {
+                if (GOV_APP_ID) {
+                    if (!accountAddress) {
+                        await handleConnect();
+                    }
+                    if (!accountAddress) {
+                        throw new Error('Connect wallet to submit on-chain proposal.');
+                    }
+
                     const algodClient = new algosdk.Algodv2('', ALGOD_URL, '');
+                    const appInfo = await algodClient.getApplicationByID(GOV_APP_ID).do();
+                    const state = decodeGlobalState(appInfo?.params?.['global-state'] || []);
+                    const nextId = Number(state.next_id || 0);
+                    if (!nextId) {
+                        throw new Error('Unable to resolve next proposal id.');
+                    }
+
                     const suggestedParams = await algodClient.getTransactionParams().do();
                     const encoder = new TextEncoder();
                     const hashBytes = fileHashHex
@@ -109,12 +149,18 @@ import React, { useState, useRef } from 'react';
                             algosdk.encodeUint64(validOptions.length)
                         ],
                         foreignAssets: [EARL_ASA_ID],
+                        boxes: [
+                            { appIndex: GOV_APP_ID, name: boxNameFor('p', nextId) },
+                            { appIndex: GOV_APP_ID, name: boxNameFor('r', nextId) }
+                        ],
                         suggestedParams
                     });
 
                     const signed = await signTransactions([[{ txn: appCallTxn, signers: [accountAddress] }]]);
                     const { txId } = await algodClient.sendRawTransaction(signed).do();
+                    await algosdk.waitForConfirmation(algodClient, txId, 4);
                     onchainTxId = txId;
+                    onchainProposalId = nextId;
                 }
 
                 const { error } = await supabase
@@ -129,7 +175,8 @@ import React, { useState, useRef } from 'react';
                         file_hash: fileHashHex,
                         vote_start_ts: startTs,
                         vote_end_ts: endTs,
-                        onchain_tx_id: onchainTxId
+                        onchain_tx_id: onchainTxId,
+                        onchain_proposal_id: onchainProposalId
                     }]);
 
                 if (error) {
