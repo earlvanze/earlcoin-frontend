@@ -190,6 +190,19 @@ const VerificationComplete = () => {
         }
         setMinting(true);
         try {
+            const existingAssetId = await getVnftAssetId(accountAddress);
+            if (existingAssetId) {
+                setNftAssetId(existingAssetId);
+                setOptedIn(true);
+                if (user?.id) {
+                    localStorage.setItem(`vnft_asset_id_${user.id}`, String(existingAssetId));
+                }
+                setStatus('minted');
+                setHasVerificationNft(true);
+                toast({ title: 'Verification NFT Found', description: 'You are already verified on-chain.' });
+                return;
+            }
+
             const { data, error } = await supabase.functions.invoke('mint-vnft', {
                 body: JSON.stringify({ wallet_address: accountAddress, user_id: user.id })
             });
@@ -200,6 +213,15 @@ const VerificationComplete = () => {
 
             if (data?.status === 'pending' && !data?.assetId) {
                 toast({ title: 'Mint Submitted', description: 'Your VNFT mint was submitted and may take a minute to confirm. If you see it in your wallet, click “I already have a VNFT — check wallet”.' });
+                return;
+            }
+
+            if (data?.status === 'already_minted' && data?.assetId) {
+                setNftAssetId(data.assetId);
+                if (user?.id) {
+                    localStorage.setItem(`vnft_asset_id_${user.id}`, String(data.assetId));
+                }
+                toast({ title: 'VNFT Already Minted', description: `Asset ID: ${data.assetId}. Please opt-in to receive it.` });
                 return;
             }
 
