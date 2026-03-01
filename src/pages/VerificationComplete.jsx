@@ -195,8 +195,8 @@ const VerificationComplete = () => {
         try {
             const suggestedParams = await algodClient.getTransactionParams().do();
             const optInTxn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
-                from: accountAddress,
-                to: accountAddress,
+                sender: accountAddress,
+                receiver: accountAddress,
                 amount: 0,
                 assetIndex: Number(nftAssetId),
                 suggestedParams,
