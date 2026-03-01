@@ -10,8 +10,9 @@ import React, { useState, useEffect } from 'react';
     import { useAuth } from '@/contexts/AuthContext.jsx';
     import { supabase } from '@/lib/customSupabaseClient';
     import { useSearchParams } from 'react-router-dom';
+    import { STRIPE_PUBLISHABLE_KEY, MEMBERSHIP_STRIPE_PRICE_ID } from '@/lib/config';
 
-    const stripePromise = loadStripe('pk_live_51RmvAnB1j8uA46lA73UjlFW3ykqG1Y6MPNTww6qfNKSnCbB99pnitadSMLjnhbJH6YdLNmORL8e0waarsuE6Y6Ev00jKURgb6y');
+    const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null;
 
     const Membership = () => {
         const { toast } = useToast();
@@ -55,8 +56,17 @@ import React, { useState, useEffect } from 'react';
             }
             setLoading(true);
             try {
+                if (!stripePromise || !MEMBERSHIP_STRIPE_PRICE_ID) {
+                    throw new Error('Stripe not configured for memberships.');
+                }
+
                 const { data, error } = await supabase.functions.invoke('create-checkout-session', {
-                    body: JSON.stringify({ user_id: user.id }),
+                    body: JSON.stringify({
+                        user_id: user.id,
+                        price_id: MEMBERSHIP_STRIPE_PRICE_ID,
+                        quantity: 1,
+                        purchase_type: 'membership'
+                    }),
                 });
 
                 if (error || data.error) {

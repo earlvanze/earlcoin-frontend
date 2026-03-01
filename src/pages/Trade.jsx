@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import PageTitle from '@/components/PageTitle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/customSupabaseClient';
 import { loadStripe } from '@stripe/stripe-js';
 import algosdk from 'algosdk';
-import { ALGOD_URL, EARL_ASA_ID, USDC_ASA_ID, STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
+import { ALGOD_URL, EARL_ASA_ID, USDC_ASA_ID, STRIPE_PUBLISHABLE_KEY, EARL_STRIPE_PRICE_ID } from '@/lib/config';
 
 const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null;
 
@@ -132,8 +132,41 @@ const TradeForm = ({ price, setPrice }) => {
   const [paymentMethod, setPaymentMethod] = useState('stripe');
   const [balances, setBalances] = useState({ earl: 0, usdc: 0, algo: 0 });
   const [isOptedIn, setIsOptedIn] = useState({ earl: false, usdc: false });
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const algodClient = new algosdk.Algodv2('', ALGOD_URL, '');
+
+  useEffect(() => {
+    const status = searchParams.get('status');
+    const sessionId = searchParams.get('session_id');
+    if (!status) return;
+
+    const handleStatus = async () => {
+      if (status === 'cancelled') {
+        toast({ variant: 'destructive', title: 'Checkout Cancelled', description: 'Your payment was cancelled.' });
+      }
+
+      if (status === 'success' && sessionId) {
+        try {
+          const { data, error } = await supabase.functions.invoke('treasury-claim', {
+            body: JSON.stringify({ session_id: sessionId })
+          });
+          if (error || data?.error) {
+            throw new Error(error?.message || data?.error || 'Claim failed');
+          }
+          toast({ title: 'Tokens Delivered', description: `Treasury transfer completed${data?.txId ? ` (TX: ${data.txId})` : ''}.` });
+        } catch (err) {
+          toast({ variant: 'destructive', title: 'Claim Failed', description: err.message || 'Please try again.' });
+        }
+      }
+
+      searchParams.delete('status');
+      searchParams.delete('session_id');
+      setSearchParams(searchParams);
+    };
+
+    handleStatus();
+  }, [searchParams, setSearchParams, toast]);
 
   useEffect(() => {
     if (isConnected && accountAddress) {
@@ -246,8 +279,12 @@ const TradeForm = ({ price, setPrice }) => {
       toast({ variant: 'destructive', title: 'Invalid Amount', description: 'Please enter a valid amount of EARL to buy.' });
       return;
     }
-    if (!stripePromise) {
-      toast({ variant: 'destructive', title: 'Stripe Not Configured', description: 'Add VITE_STRIPE_PUBLISHABLE_KEY to enable checkout.' });
+    if (parseFloat(earlAmount) < 1) {
+      toast({ variant: 'destructive', title: 'Minimum Purchase', description: 'Minimum purchase is 1 EARL.' });
+      return;
+    }
+    if (!stripePromise || !EARL_STRIPE_PRICE_ID) {
+      toast({ variant: 'destructive', title: 'Stripe Not Configured', description: 'Set VITE_STRIPE_PUBLISHABLE_KEY and VITE_EARL_STRIPE_PRICE_ID to enable checkout.' });
       return;
     }
     setLoading(true);
@@ -255,9 +292,10 @@ const TradeForm = ({ price, setPrice }) => {
       const { data, error } = await supabase.functions.invoke('create-checkout-session', {
         body: JSON.stringify({
           user_id: user.id,
-          price_id: 'price_1RmwBuB1j8uA46lAWzaRVWgf',
+          price_id: EARL_STRIPE_PRICE_ID,
           quantity: Math.ceil(parseFloat(earlAmount)),
-          wallet_address: accountAddress || 'not_connected'
+          wallet_address: accountAddress || 'not_connected',
+          purchase_type: 'earl'
         }),
       });
 
