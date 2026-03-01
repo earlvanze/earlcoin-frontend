@@ -12,7 +12,7 @@ import { CheckCircle, Loader2, AlertTriangle, Gift } from 'lucide-react';
 import PageTitle from '@/components/PageTitle';
 import algosdk from 'algosdk';
 import { VNFT_ADMIN_ADDRESS } from '@/lib/config';
-import { hasVnft, algodClient } from '@/lib/algorand';
+import { hasVnft, getVnftAssetId, algodClient } from '@/lib/algorand';
 
 const VerificationComplete = () => {
     const { toast } = useToast();
@@ -112,8 +112,13 @@ const VerificationComplete = () => {
         let cancelled = false;
         const checkExisting = async () => {
             try {
-                const owns = await hasVnft(accountAddress);
-                if (!cancelled && owns) {
+                const assetId = await getVnftAssetId(accountAddress);
+                if (!cancelled && assetId) {
+                    setNftAssetId(assetId);
+                    setOptedIn(true);
+                    if (user?.id) {
+                        localStorage.setItem(`vnft_asset_id_${user.id}`, String(assetId));
+                    }
                     setStatus('minted');
                     setHasVerificationNft(true);
                 }
@@ -125,7 +130,7 @@ const VerificationComplete = () => {
         return () => {
             cancelled = true;
         };
-    }, [accountAddress, status, setHasVerificationNft]);
+    }, [accountAddress, status, setHasVerificationNft, user]);
 
     useEffect(() => {
         const checkOptIn = async () => {
@@ -152,8 +157,13 @@ const VerificationComplete = () => {
         }
         setCheckingWallet(true);
         try {
-            const owns = await hasVnft(accountAddress);
-            if (owns) {
+            const assetId = await getVnftAssetId(accountAddress);
+            if (assetId) {
+                setNftAssetId(assetId);
+                setOptedIn(true);
+                if (user?.id) {
+                    localStorage.setItem(`vnft_asset_id_${user.id}`, String(assetId));
+                }
                 setStatus('minted');
                 setHasVerificationNft(true);
                 toast({ title: 'Verification NFT Found', description: 'You are verified on-chain.' });
