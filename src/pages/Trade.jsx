@@ -236,7 +236,11 @@ const TradeForm = ({ price, setPrice }) => {
       const singleTxnGroups = [{ txn: optInTxn, signers: [accountAddress] }];
       const signedTxn = await signTransactions([singleTxnGroups]);
 
-      const { txId } = await algodClient.sendRawTransaction(signedTxn).do();
+      const sendResult = await algodClient.sendRawTransaction(signedTxn).do();
+      const txId = sendResult?.txId || sendResult;
+      if (!txId) {
+        throw new Error('Transaction submission failed (missing txId).');
+      }
       await algosdk.waitForConfirmation(algodClient, txId, 4);
 
       toast({ title: 'Success!', description: `Successfully opted into ${assetName}` });
