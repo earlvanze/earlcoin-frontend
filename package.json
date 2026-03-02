@@ -4,15 +4,17 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "vite --host :: --port 3000",
+    "build": "node tools/generate-llms.js || true && vite build",
+    "preview": "vite preview --host :: --port 3000",
+    "preview:stable": "vite build && vite preview --host 0.0.0.0 --port 4173",
+    "lint": "eslint . --quiet"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
     "@dnd-kit/sortable": "^8.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@perawallet/connect": "^1.3.2",
+    "@perawallet/connect": "^1.5.1",
     "@radix-ui/react-alert-dialog": "^1.0.5",
     "@radix-ui/react-avatar": "^1.0.3",
     "@radix-ui/react-checkbox": "^1.0.4",
@@ -26,7 +28,9 @@
     "@stripe/react-stripe-js": "^2.7.1",
     "@stripe/stripe-js": "^3.4.1",
     "@supabase/supabase-js": "2.30.0",
-    "algosdk": "^2.7.0",
+    "@walletconnect/modal": "^2.7.0",
+    "@walletconnect/sign-client": "^2.23.7",
+    "algosdk": "^3.5.2",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
     "framer-motion": "^10.16.4",
@@ -37,7 +41,8 @@
     "react-router-dom": "^6.16.0",
     "recharts": "^2.10.3",
     "tailwind-merge": "^1.14.0",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "uuid": "^11.0.3"
   },
   "devDependencies": {
     "@types/node": "^20.8.3",
@@ -47,6 +52,11 @@
     "autoprefixer": "^10.4.16",
     "eslint": "^8.57.1",
     "eslint-config-react-app": "^7.0.1",
+    "eslint-import-resolver-alias": "^1.1.2",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-react": "^7.37.3",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "globals": "^15.14.0",
     "postcss": "^8.4.31",
     "tailwindcss": "^3.3.3",
     "vite": "^4.4.5"

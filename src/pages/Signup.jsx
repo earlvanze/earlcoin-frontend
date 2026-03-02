@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
     import { motion } from 'framer-motion';
-    import { useAuth } from '@/contexts/SupabaseAuthContext';
+    import { useAuth } from '@/contexts/AuthContext.jsx';
     import { Button } from '@/components/ui/button';
     import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
     import { Input } from '@/components/ui/input';

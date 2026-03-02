@@ -1,14 +1,12 @@
 import path from 'node:path';
 import react from '@vitejs/plugin-react';
 import { createLogger, defineConfig } from 'vite';
+import inlineEditPlugin from './plugins/visual-editor/vite-plugin-react-inline-editor.js';
+import editModeDevPlugin from './plugins/visual-editor/vite-plugin-edit-mode.js';
+import iframeRouteRestorationPlugin from './plugins/vite-plugin-iframe-route-restoration.js';
+import selectionModePlugin from './plugins/selection-mode/vite-plugin-selection-mode.js';
 
 const isDev = process.env.NODE_ENV !== 'production';
-let inlineEditPlugin, editModeDevPlugin;
-
-if (isDev) {
-	inlineEditPlugin = (await import('./plugins/visual-editor/vite-plugin-react-inline-editor.js')).default;
-	editModeDevPlugin = (await import('./plugins/visual-editor/vite-plugin-edit-mode.js')).default;
-}
 
 const configHorizonsViteErrorHandler = `
 const observer = new MutationObserver((mutations) => {
@@ -106,7 +104,11 @@ const configWindowFetchMonkeyPatch = `
 const originalFetch = window.fetch;
 
 window.fetch = function(...args) {
-	const url = args[0] instanceof Request ? args[0].url : args[0];
+	const raw = args[0] instanceof Request ? args[0].url : args[0];
+	const url = typeof raw === 'string' ? raw : (raw?.url || raw?.href || '');
+	if (typeof url !== 'string' || url.length === 0) {
+		return originalFetch.apply(this, args);
+	}
 
 	// Skip WebSocket URLs
 	if (url.startsWith('ws:') || url.startsWith('wss:')) {
@@ -141,37 +143,83 @@ window.fetch = function(...args) {
 };
 `;
 
+const configNavigationHandler = `
+if (window.navigation && window.self !== window.top) {
+	window.navigation.addEventListener('navigate', (event) => {
+		const url = event.destination.url;
+
+		try {
+			const destinationUrl = new URL(url);
+			const destinationOrigin = destinationUrl.origin;
+			const currentOrigin = window.location.origin;
+
+			if (destinationOrigin === currentOrigin) {
+				return;
+			}
+		} catch (error) {
+			return;
+		}
+
+		window.parent.postMessage({
+			type: 'horizons-navigation-error',
+			url,
+		}, '*');
+	});
+}
+`;
+
 const addTransformIndexHtml = {
 	name: 'add-transform-index-html',
 	transformIndexHtml(html) {
+		const tags = [
+			{
+				tag: 'script',
+				attrs: { type: 'module' },
+				children: configHorizonsRuntimeErrorHandler,
+				injectTo: 'head',
+			},
+			{
+				tag: 'script',
+				attrs: { type: 'module' },
+				children: configHorizonsViteErrorHandler,
+				injectTo: 'head',
+			},
+			{
+				tag: 'script',
+				attrs: {type: 'module'},
+				children: configHorizonsConsoleErrroHandler,
+				injectTo: 'head',
+			},
+			{
+				tag: 'script',
+				attrs: { type: 'module' },
+				children: configWindowFetchMonkeyPatch,
+				injectTo: 'head',
+			},
+			{
+				tag: 'script',
+				attrs: { type: 'module' },
+				children: configNavigationHandler,
+				injectTo: 'head',
+			},
+		];
+
+		if (!isDev && process.env.TEMPLATE_BANNER_SCRIPT_URL && process.env.TEMPLATE_REDIRECT_URL) {
+			tags.push(
+				{
+					tag: 'script',
+					attrs: {
+						src: process.env.TEMPLATE_BANNER_SCRIPT_URL,
+						'template-redirect-url': process.env.TEMPLATE_REDIRECT_URL,
+					},
+					injectTo: 'head',
+				}
+			);
+		}
+
 		return {
 			html,
-			tags: [
-				{
-					tag: 'script',
-					attrs: { type: 'module' },
-					children: configHorizonsRuntimeErrorHandler,
-					injectTo: 'head',
-				},
-				{
-					tag: 'script',
-					attrs: { type: 'module' },
-					children: configHorizonsViteErrorHandler,
-					injectTo: 'head',
-				},
-				{
-					tag: 'script',
-					attrs: {type: 'module'},
-					children: configHorizonsConsoleErrroHandler,
-					injectTo: 'head',
-				},
-				{
-					tag: 'script',
-					attrs: { type: 'module' },
-					children: configWindowFetchMonkeyPatch,
-					injectTo: 'head',
-				},
-			],
+			tags,
 		};
 	},
 };
@@ -191,16 +239,14 @@ logger.error = (msg, options) => {
 
 export default defineConfig({
 	customLogger: logger,
+	cacheDir: '/home/digit/.openclaw/workspace/.vite-cache/earlcoin_frontend',
 	plugins: [
-		...(isDev ? [inlineEditPlugin(), editModeDevPlugin()] : []),
+		...(isDev ? [inlineEditPlugin(), editModeDevPlugin(), iframeRouteRestorationPlugin(), selectionModePlugin()] : []),
 		react(),
 		addTransformIndexHtml
 	],
 	server: {
 		cors: true,
-		headers: {
-			'Cross-Origin-Embedder-Policy': 'credentialless',
-		},
 		allowedHosts: true,
 	},
 	resolve: {
@@ -210,6 +256,8 @@ export default defineConfig({
 		},
 	},
 	build: {
+		outDir: '/home/digit/.openclaw/workspace/.vite-build/earlcoin_frontend',
+		emptyOutDir: true,
 		rollupOptions: {
 			external: [
 				'@babel/parser',

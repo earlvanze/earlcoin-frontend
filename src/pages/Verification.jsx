@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
     import PageTitle from '@/components/PageTitle';
     import { Button } from '@/components/ui/button';
     import { Card, CardContent } from '@/components/ui/card';
-    import { useAuth } from '@/contexts/SupabaseAuthContext';
+    import { useAuth } from '@/contexts/AuthContext.jsx';
     import { useAppContext } from '@/contexts/AppContext';
     import { ShieldCheck, ShieldAlert, Loader2, LogIn, FlaskConical, Gift } from 'lucide-react';
     import { Link, useNavigate } from 'react-router-dom';
@@ -11,8 +11,9 @@ import React, { useState, useEffect } from 'react';
     import { useToast } from '@/components/ui/use-toast';
     import { supabase } from '@/lib/customSupabaseClient';
     import { loadStripe } from '@stripe/stripe-js';
+    import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
 
-    const stripePromise = loadStripe('pk_live_51RmvAnB1j8uA46lA73UjlFW3ykqG1Y6MPNTww6qfNKSnCbB99pnitadSMLjnhbJH6YdLNmORL8e0waarsuE6Y6Ev00jKURgb6y');
+    const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null;
 
     const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.1 } } };
     const itemVariants = { hidden: { y: 20, opacity: 0 }, visible: { y: 0, opacity: 1, transition: { type: 'spring' } } };
@@ -31,13 +32,18 @@ import React, { useState, useEffect } from 'react';
             }
             setLoading(true);
             try {
+                if (!stripePromise) throw new Error('Stripe publishable key missing');
                 const { data, error } = await supabase.functions.invoke('stripe-identity-session', {
                     body: JSON.stringify({ user_id: user.id }),
                 });
 
-                if (error || data.error) throw new Error(error?.message || data.error);
+                if (error || data?.error) throw new Error(error?.message || data?.error);
 
                 const { client_secret } = data;
+                const sessionId = client_secret?.split('_secret_')?.[0];
+                if (sessionId) {
+                    localStorage.setItem('stripe_kyc_session_id', sessionId);
+                }
                 const stripe = await stripePromise;
                 const result = await stripe.verifyIdentity(client_secret);
 
@@ -61,12 +67,10 @@ import React, { useState, useEffect } from 'react';
             }
             setLoading(true);
             try {
-                const { error } = await supabase
-                    .from('profiles')
-                    .update({ kyc_verified: true, updated_at: new Date().toISOString() })
-                    .eq('id', user.id);
-
-                if (error) throw error;
+                const { data, error } = await supabase.functions.invoke('set-kyc-status', {
+                    body: JSON.stringify({ kyc_verified: true })
+                });
+                if (error || data?.error) throw new Error(error?.message || data?.error?.message || 'Failed to set KYC');
 
                 toast({
                     title: "Verification Bypassed!",
@@ -77,6 +81,34 @@ import React, { useState, useEffect } from 'react';
                 toast({
                     variant: "destructive",
                     title: "Bypass Failed",
+                    description: error.message,
+                });
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        const handleResetVerification = async () => {
+            if (!user) {
+                toast({ variant: 'destructive', title: 'Not Logged In', description: 'Please log in to reset verification.' });
+                return;
+            }
+            setLoading(true);
+            try {
+                const { data, error } = await supabase.functions.invoke('set-kyc-status', {
+                    body: JSON.stringify({ kyc_verified: false })
+                });
+                if (error || data?.error) throw new Error(error?.message || data?.error?.message || 'Failed to reset KYC');
+
+                toast({
+                    title: "Verification Reset",
+                    description: "KYC status cleared. You can now test Stripe verification.",
+                });
+                navigate('/verification');
+            } catch (error) {
+                toast({
+                    variant: "destructive",
+                    title: "Reset Failed",
                     description: error.message,
                 });
             } finally {
@@ -96,7 +128,16 @@ import React, { useState, useEffect } from 'react';
                     icon: <ShieldCheck className="h-12 w-12 text-green-400" />, 
                     title: "You are Fully Verified!", 
                     description: `Your identity is confirmed and your verification NFT is in your wallet.`, 
-                    button: <Button onClick={() => navigate('/trade')}>Start Trading</Button> 
+                    button: (
+                        <div className="flex flex-col space-y-2 w-full max-w-xs">
+                            <Button onClick={() => navigate('/trade')}>Start Trading</Button>
+                            {import.meta.env.DEV && (
+                                <Button variant="outline" onClick={handleResetVerification}>
+                                    Reset KYC (Dev)
+                                </Button>
+                            )}
+                        </div>
+                    )
                 };
             }
              if (kycVerified && !hasVerificationNft) {
@@ -104,7 +145,16 @@ import React, { useState, useEffect } from 'react';
                     icon: <Gift className="h-12 w-12 text-purple-400" />, 
                     title: "Mint Your NFT", 
                     description: `You are KYC verified! The final step is to mint your verification NFT to get full trading access.`, 
-                    button: <Button onClick={() => navigate('/verification-complete')}>Mint Verification NFT</Button> 
+                    button: (
+                        <div className="flex flex-col space-y-2 w-full max-w-xs">
+                            <Button onClick={() => navigate('/verification-complete')}>Mint Verification NFT</Button>
+                            {import.meta.env.DEV && (
+                                <Button variant="outline" onClick={handleResetVerification}>
+                                    Reset KYC (Dev)
+                                </Button>
+                            )}
+                        </div>
+                    )
                 };
             }
             return { 
