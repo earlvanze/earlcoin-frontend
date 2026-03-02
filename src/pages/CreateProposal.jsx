@@ -24,7 +24,7 @@ import React, { useState, useRef } from 'react';
         const [voteDurationHours, setVoteDurationHours] = useState('72');
         const [proposalFile, setProposalFile] = useState(null);
         const { user } = useAuth();
-        const { accountAddress, signTransactions, handleConnect } = useAppContext();
+        const { accountAddress, signTransactions, handleConnect, walletType } = useAppContext();
         const navigate = useNavigate();
         const { toast } = useToast();
         const fileInputRef = useRef(null);
@@ -171,6 +171,9 @@ import React, { useState, useRef } from 'react';
                         suggestedParams
                     });
 
+                    if (walletType === 'pera') {
+                        toast({ title: 'Open Pera Wallet', description: 'Approve the proposal transaction in the Pera app.' });
+                    }
                     const signed = await signTransactions([[{ txn: appCallTxn, signers: [accountAddress] }]]);
                     const sendResult = await algodClient.sendRawTransaction(signed).do();
                     const txId = normalizeTxId(sendResult);
