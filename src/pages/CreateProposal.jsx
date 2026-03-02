@@ -157,7 +157,11 @@ import React, { useState, useRef } from 'react';
                     });
 
                     const signed = await signTransactions([[{ txn: appCallTxn, signers: [accountAddress] }]]);
-                    const { txId } = await algodClient.sendRawTransaction(signed).do();
+                    const sendResult = await algodClient.sendRawTransaction(signed).do();
+                    const txId = sendResult?.txId || sendResult;
+                    if (!txId) {
+                        throw new Error('Transaction submission failed (missing txId).');
+                    }
                     await algosdk.waitForConfirmation(algodClient, txId, 4);
                     onchainTxId = txId;
                     onchainProposalId = nextId;
