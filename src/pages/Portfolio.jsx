@@ -37,7 +37,7 @@ import React from 'react';
               {realEstateAssets.map((asset, index) => (
                 <Card key={index} className="overflow-hidden group">
                   <div className="relative h-40">
-                    <img  alt={asset.name} class="absolute h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" src="https://images.unsplash.com/photo-1595872018818-97555653a011" />
+                    <img alt={asset.name} className="absolute h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" src="https://images.unsplash.com/photo-1595872018818-97555653a011" />
                     <div className="absolute inset-0 bg-black/40"></div>
                   </div>
                   <CardHeader>
