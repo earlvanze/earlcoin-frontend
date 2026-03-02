@@ -67,6 +67,16 @@ import React, { useState, useRef } from 'react';
             return out;
         };
 
+        const fetchNextId = async () => {
+            const res = await fetch(`${ALGOD_URL}/v2/applications/${GOV_APP_ID}`);
+            if (!res.ok) {
+                throw new Error('Unable to fetch governance app state.');
+            }
+            const data = await res.json();
+            const state = decodeGlobalState(data?.params?.['global-state'] || []);
+            return Number(state.next_id || 0);
+        };
+
         const handleSubmit = async (e) => {
             e.preventDefault();
             if (!user) {
@@ -127,7 +137,10 @@ import React, { useState, useRef } from 'react';
                     const algodClient = new algosdk.Algodv2('', ALGOD_URL, '');
                     const appInfo = await algodClient.getApplicationByID(GOV_APP_ID).do();
                     const state = decodeGlobalState(appInfo?.params?.['global-state'] || []);
-                    const nextId = Number(state.next_id || 0);
+                    let nextId = Number(state.next_id || 0);
+                    if (!nextId) {
+                        nextId = await fetchNextId();
+                    }
                     if (!nextId) {
                         throw new Error('Unable to resolve next proposal id.');
                     }
