@@ -14,6 +14,7 @@ import React, { useState, useRef } from 'react';
     import { v4 as uuidv4 } from 'uuid';
     import algosdk from 'algosdk';
     import { ALGOD_URL, EARL_ASA_ID, GOV_APP_ID } from '@/lib/config';
+    import { normalizeTxId } from '@/lib/algorand';
 
     const CreateProposal = () => {
         const [title, setTitle] = useState('');
@@ -137,6 +138,7 @@ import React, { useState, useRef } from 'react';
                     const algodClient = new algosdk.Algodv2('', ALGOD_URL, '');
                     const appInfo = await algodClient.getApplicationByID(GOV_APP_ID).do();
                     const state = decodeGlobalState(appInfo?.params?.['global-state'] || []);
+                    const earlAsa = Number(state.earl_asa || EARL_ASA_ID);
                     let nextId = Number(state.next_id || 0);
                     if (!nextId) {
                         nextId = await fetchNextId();
@@ -161,7 +163,7 @@ import React, { useState, useRef } from 'react';
                             algosdk.encodeUint64(endTs),
                             algosdk.encodeUint64(validOptions.length)
                         ],
-                        foreignAssets: [EARL_ASA_ID],
+                        foreignAssets: [earlAsa],
                         boxes: [
                             { appIndex: GOV_APP_ID, name: boxNameFor('p', nextId) },
                             { appIndex: GOV_APP_ID, name: boxNameFor('r', nextId) }
@@ -171,7 +173,7 @@ import React, { useState, useRef } from 'react';
 
                     const signed = await signTransactions([[{ txn: appCallTxn, signers: [accountAddress] }]]);
                     const sendResult = await algodClient.sendRawTransaction(signed).do();
-                    const txId = sendResult?.txId || sendResult;
+                    const txId = normalizeTxId(sendResult);
                     if (!txId) {
                         throw new Error('Transaction submission failed (missing txId).');
                     }
