@@ -4,6 +4,20 @@ import { ALGOD_URL, INDEXER_URL, VNFT_ADMIN_ADDRESS } from './config';
 export const algodClient = new algosdk.Algodv2('', ALGOD_URL, '');
 export const indexerClient = new algosdk.Indexer('', INDEXER_URL, '');
 
+export function normalizeTxId(sendResult) {
+  if (!sendResult) return null;
+  if (typeof sendResult === 'string') return sendResult;
+  const direct = sendResult.txId;
+  if (typeof direct === 'string') return direct;
+  if (direct && typeof direct === 'object') {
+    if (typeof direct.txId === 'string') return direct.txId;
+    if (typeof direct.id === 'string') return direct.id;
+    if (typeof direct.transaction?.id === 'string') return direct.transaction.id;
+  }
+  if (typeof sendResult.id === 'string') return sendResult.id;
+  return null;
+}
+
 export async function hasAsset(accountAddress, assetId) {
   if (!accountAddress || !assetId) return false;
   try {

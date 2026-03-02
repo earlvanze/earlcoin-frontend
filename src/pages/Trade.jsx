@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAppContext } from '@/contexts/AppContext';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import { cn } from '@/lib/utils';
+import { normalizeTxId } from '@/lib/algorand';
 import { supabase } from '@/lib/customSupabaseClient';
 import { loadStripe } from '@stripe/stripe-js';
 import algosdk from 'algosdk';
@@ -237,7 +238,7 @@ const TradeForm = ({ price, setPrice }) => {
       const signedTxn = await signTransactions([singleTxnGroups]);
 
       const sendResult = await algodClient.sendRawTransaction(signedTxn).do();
-      const txId = sendResult?.txId || sendResult;
+      const txId = normalizeTxId(sendResult);
       if (!txId) {
         throw new Error('Transaction submission failed (missing txId).');
       }

@@ -12,7 +12,7 @@ import { CheckCircle, Loader2, AlertTriangle, Gift } from 'lucide-react';
 import PageTitle from '@/components/PageTitle';
 import algosdk from 'algosdk';
 import { VNFT_ADMIN_ADDRESS } from '@/lib/config';
-import { hasVnft, getVnftAssetId, algodClient } from '@/lib/algorand';
+import { hasAsset, getVnftAssetId, algodClient, normalizeTxId } from '@/lib/algorand';
 
 const VerificationComplete = () => {
     const { toast } = useToast();
@@ -132,6 +132,15 @@ const VerificationComplete = () => {
         let cancelled = false;
         const checkExisting = async () => {
             try {
+                if (nftAssetId) {
+                    const hasKnown = await hasAsset(accountAddress, Number(nftAssetId));
+                    if (!cancelled && hasKnown) {
+                        setOptedIn(true);
+                        setStatus('minted');
+                        setHasVerificationNft(true);
+                        return;
+                    }
+                }
                 const assetId = await getVnftAssetId(accountAddress);
                 if (!cancelled && assetId) {
                     setNftAssetId(assetId);
@@ -150,16 +159,15 @@ const VerificationComplete = () => {
         return () => {
             cancelled = true;
         };
-    }, [accountAddress, status, setHasVerificationNft, user]);
+    }, [accountAddress, status, nftAssetId, setHasVerificationNft, user]);
 
     useEffect(() => {
         if (!accountAddress || !nftAssetId || status !== 'verified') return;
         const checkHolding = async () => {
             try {
-                const acct = await algodClient.accountInformation(accountAddress).do();
-                const assets = acct?.assets || [];
-                const holding = assets.find((a) => a['asset-id'] === Number(nftAssetId));
-                if (holding && (holding.amount ?? 0) > 0) {
+                const has = await hasAsset(accountAddress, Number(nftAssetId));
+                if (has) {
+                    setOptedIn(true);
                     setStatus('minted');
                     setHasVerificationNft(true);
                 }
@@ -201,7 +209,15 @@ const VerificationComplete = () => {
         }
         setCheckingWallet(true);
         try {
-            const assetId = await getVnftAssetId(accountAddress);
+            let assetId = null;
+            if (nftAssetId) {
+                const hasKnown = await hasAsset(accountAddress, Number(nftAssetId));
+                if (hasKnown) assetId = Number(nftAssetId);
+            }
+            if (!assetId) {
+                const detected = await getVnftAssetId(accountAddress);
+                if (detected) assetId = detected;
+            }
             if (assetId) {
                 setNftAssetId(assetId);
                 setOptedIn(true);
@@ -324,7 +340,7 @@ const VerificationComplete = () => {
             });
             const signed = await signTransactions([[{ txn: optInTxn, signers: [accountAddress] }]]);
             const sendResult = await algodClient.sendRawTransaction(signed).do();
-            const txId = sendResult?.txId || sendResult;
+            const txId = normalizeTxId(sendResult);
             if (!txId) {
                 throw new Error('Transaction submission failed (missing txId).');
             }
@@ -350,6 +366,13 @@ const VerificationComplete = () => {
         }
         setClaiming(true);
         try {
+            const alreadyHas = await hasAsset(accountAddress, Number(nftAssetId));
+            if (alreadyHas) {
+                setStatus('minted');
+                setHasVerificationNft(true);
+                toast({ title: 'Already Verified', description: 'Your wallet already holds the verification NFT.' });
+                return;
+            }
             const { data, error } = await supabase.functions.invoke('transfer-vnft', {
                 body: JSON.stringify({ wallet_address: accountAddress, asset_id: nftAssetId })
             });
