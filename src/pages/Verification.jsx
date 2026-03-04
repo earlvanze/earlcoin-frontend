@@ -143,11 +143,11 @@ import React, { useState, useEffect } from 'react';
              if (kycVerified && !hasVerificationNft) {
                 return { 
                     icon: <Gift className="h-12 w-12 text-purple-400" />, 
-                    title: "Mint Your NFT", 
-                    description: `You are KYC verified! The final step is to mint your verification NFT to get full trading access.`, 
+                    title: "Check Wallet First", 
+                    description: `You are KYC verified. We’ll check your wallet for an existing VNFT before asking you to mint one.`, 
                     button: (
                         <div className="flex flex-col space-y-2 w-full max-w-xs">
-                            <Button onClick={() => navigate('/verification-complete')}>Mint Verification NFT</Button>
+                            <Button onClick={() => navigate('/verification-complete')}>Continue</Button>
                             {import.meta.env.DEV && (
                                 <Button variant="outline" onClick={handleResetVerification}>
                                     Reset KYC (Dev)

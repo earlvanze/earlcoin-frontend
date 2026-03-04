@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/components/ui/use-toast';
@@ -28,6 +28,54 @@ const VerificationComplete = () => {
     const [profileVnftWallet, setProfileVnftWallet] = useState(null);
     const navigate = useNavigate();
     const intervalRef = useRef(null);
+    const autoCheckRef = useRef(false);
+
+    const checkWalletForVnft = useCallback(async ({ silent = false } = {}) => {
+        if (!accountAddress) {
+            if (!silent) {
+                toast({ variant: 'destructive', title: 'Wallet Not Connected', description: 'Please connect your Pera Wallet to verify VNFT ownership.' });
+                handleConnect();
+            }
+            return false;
+        }
+        setCheckingWallet(true);
+        try {
+            let assetId = null;
+            if (nftAssetId) {
+                const hasKnown = await hasAsset(accountAddress, Number(nftAssetId));
+                if (hasKnown) assetId = Number(nftAssetId);
+            }
+            if (!assetId) {
+                const detected = await getVnftAssetId(accountAddress);
+                if (detected) assetId = detected;
+            }
+            if (assetId) {
+                setNftAssetId(assetId);
+                setOptedIn(true);
+                if (user?.id) {
+                    localStorage.setItem(`vnft_asset_id_${user.id}`, String(assetId));
+                }
+                setStatus('minted');
+                setHasVerificationNft(true);
+                if (!silent) {
+                    toast({ title: 'Verification NFT Found', description: 'You are verified on-chain.' });
+                }
+                return true;
+            }
+            if (!silent) {
+                toast({ variant: 'destructive', title: 'VNFT Not Found', description: 'Your wallet does not hold a verification NFT.' });
+            }
+            return false;
+        } catch (error) {
+            console.error(error);
+            if (!silent) {
+                toast({ variant: 'destructive', title: 'Wallet Check Failed', description: 'Could not verify VNFT ownership. Please try again.' });
+            }
+            return false;
+        } finally {
+            setCheckingWallet(false);
+        }
+    }, [accountAddress, handleConnect, nftAssetId, setHasVerificationNft, toast, user]);
 
     useEffect(() => {
         if (!user) {
@@ -128,6 +176,13 @@ const VerificationComplete = () => {
     }, [user]);
 
     useEffect(() => {
+        if (status !== 'verified' || !accountAddress) return;
+        if (autoCheckRef.current) return;
+        autoCheckRef.current = true;
+        checkWalletForVnft({ silent: true });
+    }, [status, accountAddress, checkWalletForVnft]);
+
+    useEffect(() => {
         if (!accountAddress || status !== 'verified') return;
         let cancelled = false;
         const checkExisting = async () => {
@@ -201,43 +256,6 @@ const VerificationComplete = () => {
         checkOptIn();
     }, [accountAddress, nftAssetId, setHasVerificationNft]);
 
-    const handleCheckWallet = async () => {
-        if (!accountAddress) {
-            toast({ variant: 'destructive', title: 'Wallet Not Connected', description: 'Please connect your Pera Wallet to verify VNFT ownership.' });
-            handleConnect();
-            return;
-        }
-        setCheckingWallet(true);
-        try {
-            let assetId = null;
-            if (nftAssetId) {
-                const hasKnown = await hasAsset(accountAddress, Number(nftAssetId));
-                if (hasKnown) assetId = Number(nftAssetId);
-            }
-            if (!assetId) {
-                const detected = await getVnftAssetId(accountAddress);
-                if (detected) assetId = detected;
-            }
-            if (assetId) {
-                setNftAssetId(assetId);
-                setOptedIn(true);
-                if (user?.id) {
-                    localStorage.setItem(`vnft_asset_id_${user.id}`, String(assetId));
-                }
-                setStatus('minted');
-                setHasVerificationNft(true);
-                toast({ title: 'Verification NFT Found', description: 'You are verified on-chain.' });
-            } else {
-                toast({ variant: 'destructive', title: 'VNFT Not Found', description: 'Your wallet does not hold a verification NFT.' });
-            }
-        } catch (error) {
-            console.error(error);
-            toast({ variant: 'destructive', title: 'Wallet Check Failed', description: 'Could not verify VNFT ownership. Please try again.' });
-        } finally {
-            setCheckingWallet(false);
-        }
-    };
-
     const handleMintVnft = async () => {
         if (!accountAddress) {
             toast({ variant: 'destructive', title: 'Wallet Not Connected', description: 'Please connect your Pera Wallet to mint the VNFT.' });
@@ -291,7 +309,7 @@ const VerificationComplete = () => {
             }
 
             if (data?.status === 'pending' && !data?.assetId) {
-                toast({ title: 'Mint Submitted', description: 'Your VNFT mint was submitted and may take a minute to confirm. If you see it in your wallet, click “I already have a VNFT — check wallet”.' });
+                toast({ title: 'Mint Submitted', description: 'Your VNFT mint was submitted and may take a minute to confirm. If you see it in your wallet, click “Check wallet for VNFT”.' });
                 return;
             }
 
@@ -409,12 +427,16 @@ const VerificationComplete = () => {
                     <>
                         <CheckCircle className="h-16 w-16 text-green-500" />
                         <CardTitle className="mt-6">You are Verified!</CardTitle>
-                        <CardDescription>Your identity has been confirmed. Mint your on-chain VNFT to complete the process.</CardDescription>
+                        <CardDescription>We’ll check your wallet for an existing VNFT first. If none is found, you can mint one.</CardDescription>
                         {nftAssetId && (
                             <p className="text-xs text-muted-foreground mt-2">Asset ID: {nftAssetId}</p>
                         )}
                         <div className="flex flex-col gap-3 mt-6">
-                            <Button onClick={handleMintVnft} disabled={minting} className="bg-gradient-to-r from-green-500 to-teal-500">
+                            <Button onClick={() => checkWalletForVnft()} disabled={checkingWallet} className="bg-gradient-to-r from-green-500 to-teal-500">
+                                {checkingWallet ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                Check wallet for VNFT
+                            </Button>
+                            <Button onClick={handleMintVnft} disabled={minting} variant="secondary">
                                 {minting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Gift className="mr-2 h-4 w-4" />}
                                 Mint Verification NFT
                             </Button>
@@ -430,10 +452,6 @@ const VerificationComplete = () => {
                                     </Button>
                                 </>
                             )}
-                            <Button onClick={handleCheckWallet} disabled={checkingWallet} variant="outline">
-                                {checkingWallet ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                I already have a VNFT — check wallet
-                            </Button>
                         </div>
                     </>
                 );
