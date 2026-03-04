@@ -17,7 +17,7 @@ import { hasAsset, getVnftAssetId, algodClient, normalizeTxId } from '@/lib/algo
 const VerificationComplete = () => {
     const { toast } = useToast();
     const { user } = useAuth();
-    const { accountAddress, handleConnect, setHasVerificationNft, signTransactions } = useAppContext();
+    const { accountAddress, handleConnect, setHasVerificationNft, signTransactions, hasVerificationNft } = useAppContext();
     const [status, setStatus] = useState('verifying');
     const [checkingWallet, setCheckingWallet] = useState(false);
     const [minting, setMinting] = useState(false);
@@ -181,6 +181,12 @@ const VerificationComplete = () => {
         autoCheckRef.current = true;
         checkWalletForVnft({ silent: true });
     }, [status, accountAddress, checkWalletForVnft]);
+
+    useEffect(() => {
+        if (hasVerificationNft && status !== 'minted') {
+            setStatus('minted');
+        }
+    }, [hasVerificationNft, status]);
 
     useEffect(() => {
         if (!accountAddress || status !== 'verified') return;
@@ -413,6 +419,22 @@ const VerificationComplete = () => {
     };
 
     const renderContent = () => {
+        const isAlreadyVerified = status === 'minted' || hasVerificationNft;
+        if (isAlreadyVerified) {
+            return (
+                <>
+                    <Gift className="h-16 w-16 text-primary" />
+                    <CardTitle className="mt-6">NFT Minted Successfully!</CardTitle>
+                    <CardDescription>
+                        {nftAssetId ? (
+                            <>Asset ID: <a href={`https://testnet.explorer.perawallet.app/asset/${nftAssetId}`} target="_blank" rel="noopener noreferrer" className="underline">{nftAssetId}</a>. </>
+                        ) : null}
+                        Welcome to the DAO!
+                    </CardDescription>
+                    <Button onClick={() => navigate('/trade')} className="mt-6">Start Trading</Button>
+                </>
+            );
+        }
         switch (status) {
             case 'verifying':
                 return (
@@ -453,20 +475,6 @@ const VerificationComplete = () => {
                                 </>
                             )}
                         </div>
-                    </>
-                );
-            case 'minted':
-                 return (
-                    <>
-                        <Gift className="h-16 w-16 text-primary" />
-                        <CardTitle className="mt-6">NFT Minted Successfully!</CardTitle>
-                        <CardDescription>
-                            {nftAssetId ? (
-                                <>Asset ID: <a href={`https://testnet.explorer.perawallet.app/asset/${nftAssetId}`} target="_blank" rel="noopener noreferrer" className="underline">{nftAssetId}</a>. </>
-                            ) : null}
-                            Welcome to the DAO!
-                        </CardDescription>
-                        <Button onClick={() => navigate('/trade')} className="mt-6">Start Trading</Button>
                     </>
                 );
             case 'timeout':
