@@ -1,6 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { useToast } from "@/components/ui/use-toast";
-import { PeraWalletConnect } from '@perawallet/connect';
 import { connectWallet, disconnectWallet, reconnectWallet, resetWalletConnectStorage, signTransactions as wcSignTransactions } from '@/lib/walletconnectV2';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/customSupabaseClient';
@@ -8,8 +7,6 @@ import { EARL_ASA_ID } from '@/lib/config';
 import { hasAsset, hasVnft } from '@/lib/algorand';
 
 const AppContext = createContext();
-
-const peraWallet = new PeraWalletConnect({ chainId: 416002 }); // Algorand Testnet
 
 export const AppProvider = ({ children }) => {
     const { toast } = useToast();
@@ -21,33 +18,57 @@ export const AppProvider = ({ children }) => {
     const [hasVerificationNft, setHasVerificationNft] = useState(false);
     const [hasEarlCoin, setHasEarlCoin] = useState(false);
     const [kycVerified, setKycVerified] = useState(false);
+    const [profileVnftWallet, setProfileVnftWallet] = useState(null);
     const [notifications, setNotifications] = useState([
         { id: 1, title: 'Proposal #12 Passed', description: 'The proposal to increase liquidity rewards has been approved.', read: false },
         { id: 2, title: 'New Lofty.ai Deal', description: 'A new property in Miami, FL is available for investment.', read: false },
         { id: 3, title: 'Vote Reminder', description: 'Voting for Proposal #14 ends in 24 hours.', read: true },
     ]);
 
+    const peraWalletRef = useRef(null);
+
+    const getPeraWallet = async () => {
+        if (!peraWalletRef.current) {
+            const { PeraWalletConnect } = await import('@perawallet/connect');
+            peraWalletRef.current = new PeraWalletConnect({ chainId: 416002 }); // Algorand Testnet
+        }
+        return peraWalletRef.current;
+    };
+
     useEffect(() => {
-        reconnectWallet().then((accounts) => {
-            if (accounts.length) {
-                setIsConnected(true);
-                setAccountAddress(accounts[0]);
-                setWalletType('wc');
-                return;
-            }
-            return peraWallet.reconnectSession().then((peraAccounts) => {
-                if (peraAccounts.length) {
+        const attemptReconnect = async () => {
+            try {
+                const accounts = await reconnectWallet();
+                if (accounts.length) {
                     setIsConnected(true);
-                    setAccountAddress(peraAccounts[0]);
-                    setWalletType('pera');
+                    setAccountAddress(accounts[0]);
+                    setWalletType('wc');
+                    return;
                 }
-            });
-        }).catch(console.error);
+                
+                // Only load Pera if there's a chance of an active session
+                if (localStorage.getItem('pera-wallet-connect-session')) {
+                    const peraWallet = await getPeraWallet();
+                    const peraAccounts = await peraWallet.reconnectSession();
+                    if (peraAccounts.length) {
+                        setIsConnected(true);
+                        setAccountAddress(peraAccounts[0]);
+                        setWalletType('pera');
+                    }
+                }
+            } catch (err) {
+                console.error('Reconnect error:', err);
+            }
+        };
+
+        attemptReconnect();
 
         return () => {
             disconnectWallet().catch(console.error);
-            peraWallet.disconnect().catch(console.error);
-        }
+            if (peraWalletRef.current) {
+                peraWalletRef.current.disconnect().catch(console.error);
+            }
+        };
     }, []);
 
     useEffect(() => {
@@ -61,27 +82,31 @@ export const AppProvider = ({ children }) => {
                 hasVnft(accountAddress),
                 hasAsset(accountAddress, EARL_ASA_ID)
             ]);
-            setHasVerificationNft(vnft);
+            const profileMatch = profileVnftWallet && profileVnftWallet === accountAddress;
+            const verifiedByProfile = kycVerified && profileMatch;
+            setHasVerificationNft(vnft || verifiedByProfile);
             setHasEarlCoin(earl);
         };
         checkAssets().catch(console.error);
-    }, [accountAddress]);
+    }, [accountAddress, profileVnftWallet, kycVerified]);
 
     useEffect(() => {
         const checkKycStatus = async () => {
             if (user) {
                 const { data, error } = await supabase
                     .from('profiles')
-                    .select('kyc_verified')
+                    .select('kyc_verified, vnft_wallet')
                     .eq('id', user.id)
                     .single();
                 
                 if (error) console.error('Error fetching KYC status in context:', error);
                 else if (data) {
                     setKycVerified(data.kyc_verified);
+                    setProfileVnftWallet(data.vnft_wallet || null);
                 }
             } else {
                 setKycVerified(false);
+                setProfileVnftWallet(null);
             }
         };
         checkKycStatus();
@@ -92,6 +117,9 @@ export const AppProvider = ({ children }) => {
             (payload) => {
               if(payload.new.kyc_verified !== undefined) {
                   setKycVerified(payload.new.kyc_verified);
+              }
+              if (payload.new.vnft_wallet !== undefined) {
+                  setProfileVnftWallet(payload.new.vnft_wallet || null);
               }
             }
           ).subscribe();
@@ -104,6 +132,7 @@ export const AppProvider = ({ children }) => {
 
     const handleConnect = async () => {
         try {
+            const peraWallet = await getPeraWallet();
             const newAccounts = await peraWallet.connect();
             if (!newAccounts?.length) throw new Error('No accounts returned');
             setIsConnected(true);
@@ -144,6 +173,7 @@ export const AppProvider = ({ children }) => {
 
     const handleDisconnect = async () => {
         if (walletType === 'pera') {
+            const peraWallet = await getPeraWallet();
             await peraWallet.disconnect();
         } else {
             await disconnectWallet();
@@ -153,6 +183,7 @@ export const AppProvider = ({ children }) => {
         setWalletType(null);
         setHasVerificationNft(false);
         setHasEarlCoin(false);
+        setProfileVnftWallet(null);
         toast({
             title: "Wallet Disconnected",
             description: "Your wallet has been disconnected.",
@@ -161,12 +192,16 @@ export const AppProvider = ({ children }) => {
 
     const resetWalletSession = async () => {
         resetWalletConnectStorage();
-        try { await peraWallet.disconnect(); } catch {}
+        try {
+            const peraWallet = await getPeraWallet();
+            await peraWallet.disconnect();
+        } catch {}
         setIsConnected(false);
         setAccountAddress(null);
         setWalletType(null);
         setHasVerificationNft(false);
         setHasEarlCoin(false);
+        setProfileVnftWallet(null);
         toast({
             title: "Wallet Session Reset",
             description: "Cleared local wallet session. Try connecting again.",
@@ -175,6 +210,7 @@ export const AppProvider = ({ children }) => {
 
     const signTransactions = async (txnGroups = []) => {
         if (walletType === 'pera') {
+            const peraWallet = await getPeraWallet();
             return peraWallet.signTransaction(txnGroups);
         }
         return wcSignTransactions(txnGroups);
