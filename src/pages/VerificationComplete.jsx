@@ -354,6 +354,14 @@ const VerificationComplete = () => {
         }
         setOptingIn(true);
         try {
+            const alreadyHas = await hasAsset(accountAddress, Number(nftAssetId));
+            if (alreadyHas) {
+                setStatus('minted');
+                setHasVerificationNft(true);
+                setOptedIn(true);
+                toast({ title: 'Already Verified', description: 'Your wallet already holds the verification NFT.' });
+                return;
+            }
             const suggestedParams = await algodClient.getTransactionParams().do();
             const optInTxn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
                 sender: accountAddress,
@@ -366,7 +374,9 @@ const VerificationComplete = () => {
             const sendResult = await algodClient.sendRawTransaction(signed).do();
             const txId = normalizeTxId(sendResult);
             if (!txId) {
-                throw new Error('Transaction submission failed (missing txId).');
+                toast({ title: 'Opt-in Submitted', description: 'Transaction submitted. Rechecking wallet...' });
+                await checkWalletForVnft({ silent: true });
+                return;
             }
             await algosdk.waitForConfirmation(algodClient, txId, 4);
             setOptedIn(true);
