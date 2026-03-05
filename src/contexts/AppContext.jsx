@@ -38,23 +38,40 @@ export const AppProvider = ({ children }) => {
     useEffect(() => {
         const attemptReconnect = async () => {
             try {
-                const accounts = await reconnectWallet();
-                if (accounts.length) {
-                    setIsConnected(true);
-                    setAccountAddress(accounts[0]);
-                    setWalletType('wc');
-                    return;
-                }
-                
-                // Only load Pera if there's a chance of an active session
-                if (localStorage.getItem('pera-wallet-connect-session')) {
+                const tryReconnectPera = async () => {
+                    if (!localStorage.getItem('pera-wallet-connect-session')) return false;
                     const peraWallet = await getPeraWallet();
                     const peraAccounts = await peraWallet.reconnectSession();
                     if (peraAccounts.length) {
                         setIsConnected(true);
                         setAccountAddress(peraAccounts[0]);
                         setWalletType('pera');
+                        return true;
                     }
+                    return false;
+                };
+
+                const tryReconnectWC = async () => {
+                    const accounts = await reconnectWallet();
+                    if (accounts.length) {
+                        setIsConnected(true);
+                        setAccountAddress(accounts[0]);
+                        setWalletType('wc');
+                        return true;
+                    }
+                    return false;
+                };
+
+                const preferred = localStorage.getItem('preferred_wallet_type');
+                if (preferred === 'pera') {
+                    if (await tryReconnectPera()) return;
+                    if (await tryReconnectWC()) return;
+                } else if (preferred === 'wc') {
+                    if (await tryReconnectWC()) return;
+                    if (await tryReconnectPera()) return;
+                } else {
+                    if (await tryReconnectPera()) return;
+                    if (await tryReconnectWC()) return;
                 }
             } catch (err) {
                 console.error('Reconnect error:', err);
@@ -138,6 +155,7 @@ export const AppProvider = ({ children }) => {
             setIsConnected(true);
             setAccountAddress(newAccounts[0]);
             setWalletType('pera');
+            try { localStorage.setItem('preferred_wallet_type', 'pera'); } catch {}
             toast({
                 title: "Wallet Connected",
                 description: "Connected via Pera Wallet.",
@@ -160,6 +178,7 @@ export const AppProvider = ({ children }) => {
             setIsConnected(true);
             setAccountAddress(newAccounts[0]);
             setWalletType('wc');
+            try { localStorage.setItem('preferred_wallet_type', 'wc'); } catch {}
             toast({
                 title: "Wallet Connected",
                 description: "Connected via WalletConnect.",
@@ -188,6 +207,7 @@ export const AppProvider = ({ children }) => {
         setHasVerificationNft(false);
         setHasEarlCoin(false);
         setProfileVnftWallet(null);
+        try { localStorage.removeItem('preferred_wallet_type'); } catch {}
         toast({
             title: "Wallet Disconnected",
             description: "Your wallet has been disconnected.",
@@ -206,6 +226,7 @@ export const AppProvider = ({ children }) => {
         setHasVerificationNft(false);
         setHasEarlCoin(false);
         setProfileVnftWallet(null);
+        try { localStorage.removeItem('preferred_wallet_type'); } catch {}
         toast({
             title: "Wallet Session Reset",
             description: "Cleared local wallet session. Try connecting again.",
