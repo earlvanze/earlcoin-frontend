@@ -128,10 +128,11 @@ import React, { useState, useRef } from 'react';
                 let onchainProposalId = null;
 
                 if (GOV_APP_ID) {
-                    if (!accountAddress) {
-                        await handleConnect();
+                    let walletAddress = accountAddress;
+                    if (!walletAddress) {
+                        walletAddress = await handleConnect();
                     }
-                    if (!accountAddress) {
+                    if (!walletAddress) {
                         throw new Error('Connect wallet to submit on-chain proposal.');
                     }
 
@@ -154,7 +155,7 @@ import React, { useState, useRef } from 'react';
                         : new Uint8Array(32);
 
                     const appCallTxn = algosdk.makeApplicationNoOpTxnFromObject({
-                        sender: accountAddress,
+                        sender: walletAddress,
                         appIndex: GOV_APP_ID,
                         appArgs: [
                             encoder.encode('propose'),
@@ -174,7 +175,7 @@ import React, { useState, useRef } from 'react';
                     if (walletType === 'pera') {
                         toast({ title: 'Open Pera Wallet', description: 'Approve the proposal transaction in the Pera app.' });
                     }
-                    const signed = await signTransactions([[{ txn: appCallTxn, signers: [accountAddress] }]]);
+                    const signed = await signTransactions([[{ txn: appCallTxn, signers: [walletAddress] }]]);
                     const sendResult = await algodClient.sendRawTransaction(signed).do();
                     const txId = normalizeTxId(sendResult);
                     if (!txId) {

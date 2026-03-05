@@ -142,12 +142,14 @@ export const AppProvider = ({ children }) => {
                 title: "Wallet Connected",
                 description: "Connected via Pera Wallet.",
             });
+            return newAccounts[0];
         } catch (error) {
             toast({
                 variant: "destructive",
                 title: "Connection Failed",
                 description: error?.message || "Could not connect via Pera Wallet. Please try again.",
             });
+            return null;
         }
     };
 
@@ -162,12 +164,14 @@ export const AppProvider = ({ children }) => {
                 title: "Wallet Connected",
                 description: "Connected via WalletConnect.",
             });
+            return newAccounts[0];
         } catch (error) {
             toast({
                 variant: "destructive",
                 title: "Connection Failed",
                 description: error?.message || "Could not connect via WalletConnect. Please try again.",
             });
+            return null;
         }
     };
 
