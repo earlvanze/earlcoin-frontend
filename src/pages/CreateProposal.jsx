@@ -186,7 +186,7 @@ import React, { useState, useRef } from 'react';
                     onchainProposalId = nextId;
                 }
 
-                const { error } = await supabase
+                const { data: created, error } = await supabase
                     .from('proposals')
                     .insert([{
                         title,
@@ -200,10 +200,22 @@ import React, { useState, useRef } from 'react';
                         vote_end_ts: endTs,
                         onchain_tx_id: onchainTxId,
                         onchain_proposal_id: onchainProposalId
-                    }]);
+                    }])
+                    .select('id')
+                    .single();
 
                 if (error) {
                     throw error;
+                }
+
+                if (created?.id) {
+                    try {
+                        await supabase.functions.invoke('snapshot-proposal-start', {
+                            body: JSON.stringify({ proposal_id: created.id })
+                        });
+                    } catch (snapshotErr) {
+                        console.warn('Snapshot start failed', snapshotErr?.message || snapshotErr);
+                    }
                 }
 
                 toast({ title: 'Proposal created!', description: 'Your proposal is now live for voting.' });
