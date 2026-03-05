@@ -17,15 +17,15 @@ import { normalizeTxId } from '@/lib/algorand';
 import { supabase } from '@/lib/customSupabaseClient';
 import { loadStripe } from '@stripe/stripe-js';
 import algosdk from 'algosdk';
-import { ALGOD_URL, EARL_ASA_ID, USDC_ASA_ID, STRIPE_PUBLISHABLE_KEY, EARL_STRIPE_PRICE_ID } from '@/lib/config';
+import { ALGOD_URL, EARL_ASA_ID, USDC_ASA_ID, STRIPE_PUBLISHABLE_KEY, EARL_STRIPE_PRICE_ID, GOV_APP_ID, TREASURY_ADDRESS, ATOMIC_SWAP_ENABLED } from '@/lib/config';
 
 const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null;
 
-// TODO: Replace with actual governance app ID from Algorand network
-const GOV_APP_ID = 1234567890;
+const DAO_TREASURY_WALLET = TREASURY_ADDRESS || (GOV_APP_ID ? algosdk.getApplicationAddress(GOV_APP_ID) : '');
 
-// Derive the DAO treasury wallet address from the governance app ID
-const DAO_TREASURY_WALLET = algosdk.getApplicationAddress(GOV_APP_ID);
+if (!DAO_TREASURY_WALLET) {
+  console.warn('Missing DAO treasury config: set VITE_TREASURY_ADDRESS or VITE_GOV_APP_ID');
+}
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -327,6 +327,16 @@ const TradeForm = ({ price, setPrice }) => {
       return;
     }
 
+    if (!GOV_APP_ID || !DAO_TREASURY_WALLET) {
+      toast({ variant: 'destructive', title: 'Treasury Not Configured', description: 'Set VITE_GOV_APP_ID and/or VITE_TREASURY_ADDRESS to enable swaps.' });
+      return;
+    }
+
+    if (!ATOMIC_SWAP_ENABLED) {
+      toast({ variant: 'destructive', title: 'Atomic Swap Disabled', description: 'Enable VITE_ENABLE_ATOMIC_SWAP=true after deploying on-chain swap logic.' });
+      return;
+    }
+
     if (!earlAmount || parseFloat(earlAmount) <= 0) {
       toast({ variant: 'destructive', title: 'Invalid Amount', description: 'Please enter a valid amount.' });
       return;
@@ -572,13 +582,15 @@ const TradeForm = ({ price, setPrice }) => {
                 <Button
                   onClick={handleSwapWithPera}
                   className="w-full bg-green-600 hover:bg-green-700 text-white"
-                  disabled={loading || !isConnected || !isOptedIn.earl || !isOptedIn.usdc}
+                  disabled={loading || !isConnected || !isOptedIn.earl || !isOptedIn.usdc || !ATOMIC_SWAP_ENABLED}
                 >
                   {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRightLeft className="mr-2 h-4 w-4" />}
                   Swap USDC for EARL
                 </Button>
                 <p className="text-xs text-muted-foreground text-center">
-                  Atomic swap using your Pera Wallet (ASA {EARL_ASA_ID})
+                  {ATOMIC_SWAP_ENABLED
+                    ? `Atomic swap using your Pera Wallet (ASA ${EARL_ASA_ID})`
+                    : 'Atomic swap disabled until on-chain swap logic is deployed.'}
                 </p>
               </>
             )}
@@ -618,13 +630,15 @@ const TradeForm = ({ price, setPrice }) => {
             <Button
               onClick={handleSwapWithPera}
               className="w-full bg-red-600 hover:bg-red-700 text-white"
-              disabled={loading || !isConnected || !isOptedIn.earl || !isOptedIn.usdc}
+              disabled={loading || !isConnected || !isOptedIn.earl || !isOptedIn.usdc || !ATOMIC_SWAP_ENABLED}
             >
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRightLeft className="mr-2 h-4 w-4" />}
               Swap EARL for USDC
             </Button>
             <p className="text-xs text-muted-foreground text-center">
-              Atomic swap EARL for USDC on-chain using Pera Wallet
+              {ATOMIC_SWAP_ENABLED
+                ? 'Atomic swap EARL for USDC on-chain using Pera Wallet'
+                : 'Atomic swap disabled until on-chain swap logic is deployed.'}
             </p>
           </CardContent>
         </TabsContent>
