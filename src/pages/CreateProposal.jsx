@@ -175,7 +175,7 @@ import React, { useState, useRef } from 'react';
                     if (walletType === 'pera') {
                         toast({ title: 'Open Pera Wallet', description: 'Approve the proposal transaction in the Pera app.' });
                     }
-                    const signed = await signTransactions([[{ txn: appCallTxn, signers: [walletAddress] }]]);
+                    const signed = await signTransactions([[{ txn: appCallTxn, signers: [walletAddress] }]], { requiredSender: walletAddress });
                     const sendResult = await algodClient.sendRawTransaction(signed).do();
                     const txId = normalizeTxId(sendResult);
                     if (!txId) {

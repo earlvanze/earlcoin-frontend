@@ -235,7 +235,7 @@ const TradeForm = ({ price, setPrice }) => {
       });
 
       const singleTxnGroups = [{ txn: optInTxn, signers: [accountAddress] }];
-      const signedTxn = await signTransactions([singleTxnGroups]);
+      const signedTxn = await signTransactions([singleTxnGroups], { requiredSender: accountAddress });
 
       const sendResult = await algodClient.sendRawTransaction(signedTxn).do();
       const txId = normalizeTxId(sendResult);
@@ -412,7 +412,7 @@ const TradeForm = ({ price, setPrice }) => {
         { txn: appCallTxn, signers: [accountAddress] }
       ];
 
-      const signedTxns = await signTransactions([singleTxnGroups]);
+      const signedTxns = await signTransactions([singleTxnGroups], { requiredSender: accountAddress });
 
       toast({
         title: '🚧 Atomic Swap Coming Soon!',

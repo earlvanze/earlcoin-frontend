@@ -26,6 +26,8 @@ export const AppProvider = ({ children }) => {
     ]);
 
     const peraWalletRef = useRef(null);
+    const peraConnectPromiseRef = useRef(null);
+    const wcConnectPromiseRef = useRef(null);
 
     const getPeraWallet = async () => {
         if (!peraWalletRef.current) {
@@ -147,51 +149,84 @@ export const AppProvider = ({ children }) => {
 
     }, [user]);
 
-    const handleConnect = async () => {
-        try {
-            const peraWallet = await getPeraWallet();
-            const newAccounts = await peraWallet.connect();
-            if (!newAccounts?.length) throw new Error('No accounts returned');
-            setIsConnected(true);
-            setAccountAddress(newAccounts[0]);
-            setWalletType('pera');
-            try { localStorage.setItem('preferred_wallet_type', 'pera'); } catch {}
-            toast({
-                title: "Wallet Connected",
-                description: "Connected via Pera Wallet.",
-            });
-            return newAccounts[0];
-        } catch (error) {
-            toast({
-                variant: "destructive",
-                title: "Connection Failed",
-                description: error?.message || "Could not connect via Pera Wallet. Please try again.",
-            });
-            return null;
+    const normalizeAddress = (addr) => (typeof addr === 'string' ? addr.trim() : null);
+
+    const shortAddress = (addr) => {
+        if (!addr || typeof addr !== 'string') return 'unknown';
+        return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+    };
+
+    const extractRequiredSender = (txnGroups = []) => {
+        for (const group of txnGroups) {
+            for (const txnObj of group || []) {
+                const signer = normalizeAddress(txnObj?.signers?.[0]);
+                if (signer) return signer;
+            }
         }
+        return null;
+    };
+
+    const handleConnect = async () => {
+        if (peraConnectPromiseRef.current) return peraConnectPromiseRef.current;
+
+        peraConnectPromiseRef.current = (async () => {
+            try {
+                const peraWallet = await getPeraWallet();
+                const newAccounts = await peraWallet.connect();
+                if (!newAccounts?.length) throw new Error('No accounts returned');
+                setIsConnected(true);
+                setAccountAddress(newAccounts[0]);
+                setWalletType('pera');
+                try { localStorage.setItem('preferred_wallet_type', 'pera'); } catch {}
+                toast({
+                    title: "Wallet Connected",
+                    description: "Connected via Pera Wallet.",
+                });
+                return newAccounts[0];
+            } catch (error) {
+                toast({
+                    variant: "destructive",
+                    title: "Connection Failed",
+                    description: error?.message || "Could not connect via Pera Wallet. Please try again.",
+                });
+                return null;
+            } finally {
+                peraConnectPromiseRef.current = null;
+            }
+        })();
+
+        return peraConnectPromiseRef.current;
     };
 
     const handleConnectWC = async () => {
-        try {
-            const newAccounts = await connectWallet();
-            if (!newAccounts?.length) throw new Error('No accounts returned');
-            setIsConnected(true);
-            setAccountAddress(newAccounts[0]);
-            setWalletType('wc');
-            try { localStorage.setItem('preferred_wallet_type', 'wc'); } catch {}
-            toast({
-                title: "Wallet Connected",
-                description: "Connected via WalletConnect.",
-            });
-            return newAccounts[0];
-        } catch (error) {
-            toast({
-                variant: "destructive",
-                title: "Connection Failed",
-                description: error?.message || "Could not connect via WalletConnect. Please try again.",
-            });
-            return null;
-        }
+        if (wcConnectPromiseRef.current) return wcConnectPromiseRef.current;
+
+        wcConnectPromiseRef.current = (async () => {
+            try {
+                const newAccounts = await connectWallet();
+                if (!newAccounts?.length) throw new Error('No accounts returned');
+                setIsConnected(true);
+                setAccountAddress(newAccounts[0]);
+                setWalletType('wc');
+                try { localStorage.setItem('preferred_wallet_type', 'wc'); } catch {}
+                toast({
+                    title: "Wallet Connected",
+                    description: "Connected via WalletConnect.",
+                });
+                return newAccounts[0];
+            } catch (error) {
+                toast({
+                    variant: "destructive",
+                    title: "Connection Failed",
+                    description: error?.message || "Could not connect via WalletConnect. Please try again.",
+                });
+                return null;
+            } finally {
+                wcConnectPromiseRef.current = null;
+            }
+        })();
+
+        return wcConnectPromiseRef.current;
     };
 
     const handleDisconnect = async () => {
@@ -233,11 +268,57 @@ export const AppProvider = ({ children }) => {
         });
     };
 
-    const signTransactions = async (txnGroups = []) => {
+    const signTransactions = async (txnGroups = [], options = {}) => {
+        const requiredSender = normalizeAddress(options?.requiredSender || extractRequiredSender(txnGroups));
+
         if (walletType === 'pera') {
             const peraWallet = await getPeraWallet();
+            let currentAccounts = [];
+
+            try {
+                currentAccounts = await peraWallet.reconnectSession();
+            } catch {
+                currentAccounts = [];
+            }
+
+            const normalizedAccounts = currentAccounts.map(normalizeAddress).filter(Boolean);
+
+            if (requiredSender && normalizedAccounts.length && !normalizedAccounts.includes(requiredSender)) {
+                try { await peraWallet.disconnect(); } catch {}
+                currentAccounts = await peraWallet.connect();
+            } else if (!currentAccounts.length) {
+                currentAccounts = await peraWallet.connect();
+            }
+
+            const finalAccounts = (currentAccounts || []).map(normalizeAddress).filter(Boolean);
+            if (!finalAccounts.length) {
+                throw new Error('No Pera account selected.');
+            }
+
+            if (requiredSender && !finalAccounts.includes(requiredSender)) {
+                const active = finalAccounts[0];
+                setIsConnected(true);
+                setAccountAddress(active);
+                setWalletType('pera');
+                try { localStorage.setItem('preferred_wallet_type', 'pera'); } catch {}
+                throw new Error(`Connected Pera account ${shortAddress(active)} does not match transaction sender ${shortAddress(requiredSender)}. Switch account and retry.`);
+            }
+
+            const active = requiredSender || finalAccounts[0];
+            if (active && normalizeAddress(accountAddress) !== active) {
+                setIsConnected(true);
+                setAccountAddress(active);
+                setWalletType('pera');
+                try { localStorage.setItem('preferred_wallet_type', 'pera'); } catch {}
+            }
+
             return peraWallet.signTransaction(txnGroups);
         }
+
+        if (requiredSender && normalizeAddress(accountAddress) && normalizeAddress(accountAddress) !== requiredSender) {
+            throw new Error(`Connected wallet ${shortAddress(accountAddress)} does not match transaction sender ${shortAddress(requiredSender)}.`);
+        }
+
         return wcSignTransactions(txnGroups);
     };
 

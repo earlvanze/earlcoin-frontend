@@ -370,7 +370,7 @@ const VerificationComplete = () => {
                 assetIndex: Number(nftAssetId),
                 suggestedParams,
             });
-            const signed = await signTransactions([[{ txn: optInTxn, signers: [accountAddress] }]]);
+            const signed = await signTransactions([[{ txn: optInTxn, signers: [accountAddress] }]], { requiredSender: accountAddress });
             const sendResult = await algodClient.sendRawTransaction(signed).do();
             const txId = normalizeTxId(sendResult);
             if (!txId) {
