@@ -72,6 +72,30 @@ import React from 'react';
           ],
           platforms: { airbnb: 96.7, vrbo: 2.1, direct: 1.3 },
         },
+
+        distributions: {
+          total: 7737.90,
+          annualized: 7174,
+          count: 13,
+          period: 'Feb 2025 — Mar 2026',
+          avgMonthly: 598,
+          yieldOnCost: 9.2,
+          history: [
+            { date: '2025-02-07', amount: 1753.46, source: 'LLC' },
+            { date: '2025-02-08', amount: 364.00, source: 'LLC' },
+            { date: '2025-03-06', amount: 468.63, source: 'Chad' },
+            { date: '2025-04-08', amount: 338.00, source: 'Chad' },
+            { date: '2025-06-06', amount: 572.77, source: 'Chad' },
+            { date: '2025-07-09', amount: 312.42, source: 'Chad' },
+            { date: '2025-08-12', amount: 260.35, source: 'Chad' },
+            { date: '2025-10-09', amount: 442.56, source: 'Chad' },
+            { date: '2025-11-05', amount: 468.63, source: 'Chad' },
+            { date: '2025-12-07', amount: 666.21, source: 'LLC' },
+            { date: '2026-01-07', amount: 1145.54, source: 'LLC' },
+            { date: '2026-02-10', amount: 476.70, source: 'Chad' },
+            { date: '2026-03-08', amount: 468.63, source: 'LLC' },
+          ],
+        },
       },
     ];
 
@@ -252,6 +276,40 @@ import React from 'react';
                         <div key={i} className="bg-accent/40 rounded px-3 py-1 text-center">
                           <p className="text-xs text-muted-foreground">{yr.year}</p>
                           <p className="text-sm font-semibold">${(yr.rev/1000).toFixed(0)}k</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Distributions */}
+                  <div className="border-t border-border/20 pt-4">
+                    <h4 className="text-sm font-semibold text-green-400 mb-3 flex items-center gap-2"><DollarSign className="h-4 w-4" /> Your Distributions (5.207% share via Zelle)</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Total Received</p>
+                        <p className="text-lg font-bold text-green-400">{formatUSD(asset.distributions.total)}</p>
+                        <p className="text-xs text-muted-foreground">{asset.distributions.count} distributions</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Annualized</p>
+                        <p className="text-lg font-bold">{formatUSD(asset.distributions.annualized)}</p>
+                        <p className="text-xs text-muted-foreground">{asset.distributions.period}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Avg Monthly</p>
+                        <p className="text-lg font-bold">${asset.distributions.avgMonthly}/mo</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Yield on Cost Basis</p>
+                        <p className="text-lg font-bold text-green-400">{asset.distributions.yieldOnCost}%</p>
+                        <p className="text-xs text-muted-foreground">$78k cost basis (5.207% of $1.5M)</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-1">
+                      {asset.distributions.history.map((d, i) => (
+                        <div key={i} className={`text-center rounded px-1 py-1 text-xs ${d.source === 'LLC' ? 'bg-green-500/10' : 'bg-blue-500/10'}`}>
+                          <p className="text-muted-foreground">{d.date.slice(5)}</p>
+                          <p className="font-medium">${d.amount.toFixed(0)}</p>
                         </div>
                       ))}
                     </div>
