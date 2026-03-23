@@ -2,9 +2,10 @@ import React from 'react';
     import { motion } from 'framer-motion';
     import PageTitle from '@/components/PageTitle';
     import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-    import { Landmark, Bitcoin, HelpCircle, Coins, TrendingUp, MapPin } from 'lucide-react';
+    import { Landmark, Bitcoin, HelpCircle, Coins, TrendingUp, MapPin, AlertTriangle } from 'lucide-react';
 
     const realEstateAssets = [
+      { name: '1 Coolwood Dr, Little Rock, AR 72202', tokens: 23255, price: 50.00, value: 1162750, capRate: '—', apy: '—', state: 'AR', note: '$750k mortgage (unseparated)' },
       { name: '9 Country Club Ln N, Briarcliff Manor, NY', tokens: 690, price: 21.02, value: 14504.86, capRate: '2.4%', apy: '12.5%', state: 'NY' },
       { name: '85-104 Alawa Pl, Waianae, HI 96792', tokens: 406, price: 35.27, value: 14319.54, capRate: '-0.7%', apy: '19.0%', state: 'HI' },
       { name: '22164 Umland Cir, Jenner, CA 95450', tokens: 569, price: 14.32, value: 8145.76, capRate: '2.0%', apy: '5.3%', state: 'CA' },
@@ -36,10 +37,12 @@ import React from 'react';
     ];
 
     const totalPropertyValue = realEstateAssets.reduce((sum, a) => sum + a.value, 0);
+    const mortgageDebt = 750000;
+    const netPropertyValue = totalPropertyValue - mortgageDebt;
 
     const cryptoAssets = [
-      { name: 'USDC', symbol: 'USDC', value: '$909.71', allocation: '1.2%' },
-      { name: 'goBTC', symbol: 'goBTC', value: '~$3,000', allocation: '4.0%' },
+      { name: 'USDC', symbol: 'USDC', value: '$909.71', allocation: '—' },
+      { name: 'goBTC', symbol: 'goBTC', value: '~$3,000', allocation: '—' },
       { name: 'EARLDAO', symbol: 'EARL', value: '146 tokens', allocation: '—' },
       { name: 'ALPHA', symbol: 'ALPHA', value: '3,003 tokens', allocation: '—' },
     ];
@@ -54,7 +57,7 @@ import React from 'react';
       visible: { y: 0, opacity: 1, transition: { type: 'spring' } },
     };
 
-    const formatUSD = (val) => val.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+    const formatUSD = (val) => val.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 
     const Portfolio = () => {
       return (
@@ -62,23 +65,32 @@ import React from 'react';
           <PageTitle title="DAO Portfolio" description="Real portfolio data from on-chain Algorand holdings + LoftyAssist." />
 
           {/* Summary KPIs */}
-          <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Total Property Value</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">Gross Property Value</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{formatUSD(totalPropertyValue)}</div>
-                <p className="text-xs text-muted-foreground">29 properties</p>
+                <p className="text-xs text-muted-foreground">30 properties across 3 wallets</p>
+              </CardContent>
+            </Card>
+            <Card className="border-red-500/30">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-red-400 flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> Mortgage Debt</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-red-400">-{formatUSD(mortgageDebt)}</div>
+                <p className="text-xs text-muted-foreground">1 Coolwood Dr (unseparated)</p>
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Estimated Total</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">Net Property Equity</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">~$73,500</div>
-                <p className="text-xs text-muted-foreground">Properties + crypto</p>
+                <div className="text-2xl font-bold text-green-400">{formatUSD(netPropertyValue)}</div>
+                <p className="text-xs text-muted-foreground">After mortgage deduction</p>
               </CardContent>
             </Card>
             <Card>
@@ -86,8 +98,8 @@ import React from 'react';
                 <CardTitle className="text-sm font-medium text-muted-foreground">Top Concentration</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">25.5%</div>
-                <p className="text-xs text-muted-foreground">Madison Ave cluster (4 props)</p>
+                <div className="text-2xl font-bold">94.4%</div>
+                <p className="text-xs text-muted-foreground">1 Coolwood Dr (by gross value)</p>
               </CardContent>
             </Card>
             <Card>
@@ -95,8 +107,8 @@ import React from 'react';
                 <CardTitle className="text-sm font-medium text-muted-foreground">States Represented</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">12</div>
-                <p className="text-xs text-muted-foreground">NY, HI, CA, TN, OH, IL, NM, AZ, AL, TX, CO, FL</p>
+                <div className="text-2xl font-bold">13</div>
+                <p className="text-xs text-muted-foreground">+ AR (Coolwood)</p>
               </CardContent>
             </Card>
           </motion.div>
@@ -107,14 +119,17 @@ import React from 'react';
               <CardContent className="p-0">
                 <div className="divide-y divide-border/20">
                   {realEstateAssets.map((asset, index) => (
-                    <div key={index} className="flex items-center justify-between p-4 hover:bg-accent/50 transition-colors">
+                    <div key={index} className={`flex items-center justify-between p-4 hover:bg-accent/50 transition-colors ${asset.note ? 'bg-yellow-500/5 border-l-2 border-yellow-500/40' : ''}`}>
                       <div className="flex items-center gap-4 flex-1 min-w-0">
-                        <div className="bg-secondary p-2 rounded-full shrink-0">
-                          <MapPin className="h-4 w-4 text-blue-400" />
+                        <div className={`p-2 rounded-full shrink-0 ${asset.note ? 'bg-yellow-500/20' : 'bg-secondary'}`}>
+                          <MapPin className={`h-4 w-4 ${asset.note ? 'text-yellow-400' : 'text-blue-400'}`} />
                         </div>
                         <div className="min-w-0">
                           <p className="font-medium text-sm truncate">{asset.name}</p>
-                          <p className="text-xs text-muted-foreground">{asset.tokens} tokens @ {formatUSD(asset.price)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {asset.tokens.toLocaleString()} tokens @ {asset.price < 1 ? `$${asset.price}` : `$${asset.price.toFixed(2)}`}
+                            {asset.note && <span className="text-yellow-400 ml-2">⚠ {asset.note}</span>}
+                          </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-6 shrink-0">
@@ -126,7 +141,7 @@ import React from 'react';
                           <p className="text-xs text-muted-foreground">APY (7d)</p>
                           <p className={`text-sm font-medium ${parseFloat(asset.apy) > 10 ? 'text-green-400' : ''}`}>{asset.apy}</p>
                         </div>
-                        <div className="text-right min-w-[90px]">
+                        <div className="text-right min-w-[100px]">
                           <p className="font-semibold">{formatUSD(asset.value)}</p>
                           <p className="text-xs text-muted-foreground">{(asset.value / totalPropertyValue * 100).toFixed(1)}%</p>
                         </div>
@@ -164,7 +179,7 @@ import React from 'react';
 
           <motion.div variants={itemVariants} className="mt-6">
             <p className="text-xs text-muted-foreground text-center">
-              Data sourced from Algorand Indexer + LoftyAssist API — Last updated: 2026-03-23
+              Data sourced from Algorand Indexer + LoftyAssist API — 3 wallets — Last updated: 2026-03-23
             </p>
           </motion.div>
         </motion.div>
