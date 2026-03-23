@@ -7,9 +7,9 @@ import React from 'react';
     import USMap from '@/components/USMap';
 
     const kpiData = [
-      { title: 'Gross Property Value', value: '$1.41M', icon: DollarSign, change: '30 properties + LLC + solar + crypto' },
+      { title: 'Gross Property Value', value: '$1.51M', icon: DollarSign, change: '30 properties + LLC + solar + crypto' },
       { title: 'Mortgage Debt', value: '-$750K', icon: AlertTriangle, change: '1 Coolwood Dr (unseparated)', color: 'text-red-400' },
-      { title: 'Net Equity', value: '~$545K', icon: Landmark, change: 'Properties + crypto' },
+      { title: 'Net Equity', value: '~$641K', icon: Landmark, change: 'Properties + crypto' },
       { title: 'Top APY (7d)', value: '183.4%', icon: TrendingUp, change: '6601 E Hearn Rd, Scottsdale' },
     ];
 
