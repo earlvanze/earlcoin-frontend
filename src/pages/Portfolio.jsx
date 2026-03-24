@@ -5,7 +5,7 @@ import React from 'react';
     import { Landmark, Bitcoin, HelpCircle, Coins, TrendingUp, MapPin, AlertTriangle, Sun, Home, Zap, Calendar, DollarSign } from 'lucide-react';
 
     const realEstateAssets = [
-      { name: '1 Coolwood Dr, Little Rock, AR 72202', tokens: 23255, price: 50.00, value: 1162750, capRate: '—', apy: '—', state: 'AR', note: '$750k mortgage (unseparated)', wallet: 'W3' },
+      { name: '1 Coolwood Dr, Little Rock, AR 72202', tokens: 23255, price: 50.00, value: 1162750, capRate: '—', apy: '—', state: 'AR', note: '$750k mortgage (unseparated)', wallet: 'Treasury' },
       { name: '9 Country Club Ln N, Briarcliff Manor, NY', tokens: 690, price: 21.02, value: 14504.86, capRate: '2.4%', apy: '12.5%', state: 'NY', wallet: 'W1' },
       { name: '85-104 Alawa Pl, Waianae, HI 96792', tokens: 406, price: 35.27, value: 14319.54, capRate: '-0.7%', apy: '19.0%', state: 'HI', wallet: 'W1' },
       { name: '22164 Umland Cir, Jenner, CA 95450', tokens: 569, price: 14.32, value: 8145.76, capRate: '2.0%', apy: '5.3%', state: 'CA', wallet: 'W1' },
@@ -402,7 +402,7 @@ import React from 'react';
 
           <motion.div variants={itemVariants}>
             <p className="text-xs text-muted-foreground text-center">
-              On-chain: Algorand Indexer + LoftyAssist (3 wallets) · STR: Hospitable · Solar: Xcel Energy · Updated: 2026-03-23
+              On-chain: Algorand Indexer + LoftyAssist (W1 + Treasury) · STR: Hospitable · Solar: Xcel Energy · Updated: 2026-03-23
             </p>
           </motion.div>
         </motion.div>

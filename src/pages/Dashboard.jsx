@@ -162,7 +162,7 @@ import React from 'react';
 
           <motion.div variants={itemVariants} className="mt-6">
             <p className="text-xs text-muted-foreground text-center">
-              Data sourced from Algorand Indexer + LoftyAssist API — 3 wallets — Last updated: 2026-03-23
+              Data sourced from Algorand Indexer + LoftyAssist API — 2 wallets (W1 + Treasury) — Last updated: 2026-03-23
             </p>
           </motion.div>
         </motion.div>
