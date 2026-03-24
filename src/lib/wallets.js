@@ -7,8 +7,8 @@ export const WALLETS = {
 // 1 Coolwood Dr ASA ID (not in LoftyAssist, manually tracked)
 export const COOLWOOD_ASA = 2021905123;
 export const COOLWOOD_TOKEN_PRICE = 50.00; // Manual override until in LoftyAssist
-export const COOLWOOD_MORTGAGE = 750000;
+export const COOLWOOD_MORTGAGE = 0;
 
 // API endpoints
 export const INDEXER_BASE = 'https://mainnet-idx.4160.nodely.dev';
-export const LOFTY_API = 'https://www.loftyassist.com/api/properties';
+export const LOFTY_API = '/api/lofty.php';

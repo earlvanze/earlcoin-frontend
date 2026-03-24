@@ -59,15 +59,15 @@ import React from 'react';
       }
 
       const { totalGross, totalMortgage, stateValues, properties, coolwood, propertyCount, stateCount, topApy } = data;
-      const netEquity = totalGross - totalMortgage;
+      const netEquity = totalGross;
 
       // Add current NAV point
       const currentNav = [...navData, { date: 'Now', nav: Math.round(data.loftyGross) }];
 
       const kpiData = [
         { title: 'Gross Property Value', value: formatUSD(totalGross), icon: DollarSign, change: `${propertyCount} properties across ${stateCount} states` },
-        { title: 'Mortgage Debt', value: `-${formatUSD(totalMortgage)}`, icon: AlertTriangle, change: '1 Coolwood Dr (unseparated)', color: 'text-red-400' },
-        { title: 'Net Equity', value: `~${formatUSD(netEquity)}`, icon: Landmark, change: 'Properties (on-chain)' },
+        { title: 'Lofty Properties', value: `${propertyCount}`, icon: MapPin, change: `Across ${stateCount} states` },
+        { title: 'Gross Value', value: formatUSD(totalGross), icon: Landmark, change: 'On-chain token value (live)' },
         { title: 'Top APY (7d)', value: `${topApy.apy7d?.toFixed(1) || '0'}%`, icon: TrendingUp, change: topApy.address?.split(',')[0] || 'N/A' },
       ];
 
@@ -163,7 +163,7 @@ import React from 'react';
                         <p className="text-sm font-medium">{h.address.split(',').slice(0, 2).join(',')}</p>
                         <p className="text-xs text-muted-foreground">
                           {formatUSD(h.value)} · {h.tokens.toLocaleString()} tokens
-                          {h.isCoolwood && ` · $750k mortgage`}
+                          
                           {h.apy7d > 0 && ` · ${h.apy7d.toFixed(1)}% APY`}
                         </p>
                       </div>

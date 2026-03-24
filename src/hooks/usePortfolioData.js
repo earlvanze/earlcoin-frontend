@@ -109,7 +109,7 @@ export function usePortfolioData() {
           monthlyRent: null,
           wallet: 'Treasury',
           assetId: COOLWOOD_ASA,
-          mortgage: COOLWOOD_MORTGAGE,
+          
           isCoolwood: true,
         } : null;
 

@@ -128,7 +128,7 @@ import React from 'react';
       const allProperties = coolwood ? [coolwood, ...properties] : properties;
       const llcEquityShare = offChainAssets[0].equityShare;
       const debtShareLuna = Math.round(offChainAssets[0].mortgage * offChainAssets[0].ownershipPct / 100);
-      const totalDebt = totalMortgage + debtShareLuna + solarAsset.loanBalance;
+      const totalDebt = debtShareLuna + solarAsset.loanBalance;
       const grossAssets = totalGross + Math.round(offChainAssets[0].propertyValue * offChainAssets[0].ownershipPct / 100) + solarAsset.cost + 3910;
       const netWorth = grossAssets - totalDebt;
       const str = offChainAssets[0].str;
@@ -151,7 +151,7 @@ import React from 'react';
               <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-red-400 flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> Total Debt</CardTitle></CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-red-400">-{formatUSD(totalDebt)}</div>
-                <p className="text-xs text-muted-foreground">Coolwood $750k + Luna share ${(debtShareLuna/1000).toFixed(0)}k + solar $96k</p>
+                <p className="text-xs text-muted-foreground">Luna share ${(debtShareLuna/1000).toFixed(0)}k + solar $96k</p>
               </CardContent>
             </Card>
             <Card className="border-green-500/30">
@@ -187,7 +187,7 @@ import React from 'react';
                           <p className="text-xs text-muted-foreground">
                             {asset.tokens.toLocaleString()} tokens @ ${asset.lpPrice?.toFixed(2) || '?'}
                             {asset.wallet && <span className="ml-2 text-purple-400/60">[{asset.wallet}]</span>}
-                            {asset.isCoolwood && <span className="text-yellow-400 ml-2">⚠ ${(asset.mortgage/1000).toFixed(0)}k mortgage</span>}
+                            
                           </p>
                         </div>
                       </div>
