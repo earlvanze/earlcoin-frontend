@@ -2,16 +2,10 @@ import React from 'react';
     import { motion } from 'framer-motion';
     import PageTitle from '@/components/PageTitle';
     import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-    import { DollarSign, MapPin, TrendingUp, Landmark, AlertTriangle } from 'lucide-react';
+    import { DollarSign, MapPin, TrendingUp, Landmark, AlertTriangle, Loader2 } from 'lucide-react';
     import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
     import USMap from '@/components/USMap';
-
-    const kpiData = [
-      { title: 'Gross Property Value', value: '$1.51M', icon: DollarSign, change: '30 properties + LLC + solar + crypto' },
-      { title: 'Mortgage Debt', value: '-$750K', icon: AlertTriangle, change: '1 Coolwood Dr (unseparated)', color: 'text-red-400' },
-      { title: 'Net Equity', value: '~$641K', icon: Landmark, change: 'Properties + crypto' },
-      { title: 'Top APY (7d)', value: '183.4%', icon: TrendingUp, change: '6601 E Hearn Rd, Scottsdale' },
-    ];
+    import { usePortfolioData } from '@/hooks/usePortfolioData';
 
     const navData = [
       { date: 'Sep 24', nav: 12500 },
@@ -21,24 +15,7 @@ import React from 'react';
       { date: 'Jun 25', nav: 62400 },
       { date: 'Sep 25', nav: 65100 },
       { date: 'Dec 25', nav: 67800 },
-      { date: 'Mar 26', nav: 69611 },
     ];
-
-    const stateValues = {
-      AR: 1162750,
-      NY: 32715,
-      HI: 14320,
-      CA: 8146,
-      TN: 5381,
-      NM: 1918,
-      OH: 1930,
-      IL: 655,
-      AZ: 728,
-      AL: 424,
-      TX: 103,
-      CO: 102,
-      FL: 31,
-    };
 
     const containerVariants = {
       hidden: { opacity: 0 },
@@ -50,7 +27,55 @@ import React from 'react';
       visible: { y: 0, opacity: 1, transition: { type: 'spring', stiffness: 100 } },
     };
 
+    const formatUSD = (val) => {
+      if (val >= 1000000) return `$${(val / 1000000).toFixed(2)}M`;
+      if (val >= 1000) return `$${(val / 1000).toFixed(1)}k`;
+      return `$${val.toFixed(0)}`;
+    };
+
     const Dashboard = () => {
+      const { data, loading, error, lastUpdated } = usePortfolioData();
+
+      if (loading) {
+        return (
+          <div className="flex items-center justify-center min-h-[60vh]">
+            <div className="text-center space-y-4">
+              <Loader2 className="h-8 w-8 animate-spin text-purple-400 mx-auto" />
+              <p className="text-muted-foreground">Loading on-chain portfolio data...</p>
+            </div>
+          </div>
+        );
+      }
+
+      if (error) {
+        return (
+          <div className="flex items-center justify-center min-h-[60vh]">
+            <div className="text-center space-y-4">
+              <AlertTriangle className="h-8 w-8 text-red-400 mx-auto" />
+              <p className="text-red-400">Error loading data: {error}</p>
+            </div>
+          </div>
+        );
+      }
+
+      const { totalGross, totalMortgage, stateValues, properties, coolwood, propertyCount, stateCount, topApy } = data;
+      const netEquity = totalGross - totalMortgage;
+
+      // Add current NAV point
+      const currentNav = [...navData, { date: 'Now', nav: Math.round(data.loftyGross) }];
+
+      const kpiData = [
+        { title: 'Gross Property Value', value: formatUSD(totalGross), icon: DollarSign, change: `${propertyCount} properties across ${stateCount} states` },
+        { title: 'Mortgage Debt', value: `-${formatUSD(totalMortgage)}`, icon: AlertTriangle, change: '1 Coolwood Dr (unseparated)', color: 'text-red-400' },
+        { title: 'Net Equity', value: `~${formatUSD(netEquity)}`, icon: Landmark, change: 'Properties (on-chain)' },
+        { title: 'Top APY (7d)', value: `${topApy.apy7d?.toFixed(1) || '0'}%`, icon: TrendingUp, change: topApy.address?.split(',')[0] || 'N/A' },
+      ];
+
+      // Top 4 holdings for cards
+      const topHoldings = [];
+      if (coolwood) topHoldings.push(coolwood);
+      topHoldings.push(...properties.slice(0, coolwood ? 3 : 4));
+
       return (
         <motion.div initial="hidden" animate="visible" variants={containerVariants}>
           <PageTitle title="Dashboard" description="EarlCoin DAO — Real portfolio overview from on-chain data." />
@@ -77,11 +102,11 @@ import React from 'react';
               <Card className="p-4">
                 <CardHeader>
                   <CardTitle>Portfolio NAV Over Time</CardTitle>
-                  <p className="text-xs text-muted-foreground">Excluding 1 Coolwood Dr (pre-tokenization accumulation)</p>
+                  <p className="text-xs text-muted-foreground">Lofty tokens (excl. 1 Coolwood) — current from live data</p>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={navData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                    <LineChart data={currentNav} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                       <XAxis dataKey="date" stroke="rgba(255,255,255,0.5)" tick={{ fontSize: 11 }} />
                       <YAxis stroke="rgba(255,255,255,0.5)" tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
@@ -100,7 +125,7 @@ import React from 'react';
               <Card className="p-4">
                 <CardHeader>
                   <CardTitle>Geographic Distribution</CardTitle>
-                  <p className="text-xs text-muted-foreground">By gross token value across 13 states</p>
+                  <p className="text-xs text-muted-foreground">By gross token value across {stateCount} states</p>
                 </CardHeader>
                 <CardContent>
                   <USMap stateValues={stateValues} />
@@ -111,7 +136,7 @@ import React from 'react';
                       .map(([state, value]) => (
                         <div key={state} className="text-center">
                           <p className="text-xs text-muted-foreground">{state}</p>
-                          <p className="text-sm font-semibold">${value >= 1000 ? `${(value/1000).toFixed(1)}k` : value}</p>
+                          <p className="text-sm font-semibold">{formatUSD(value)}</p>
                         </div>
                       ))}
                   </div>
@@ -127,34 +152,23 @@ import React from 'react';
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="flex items-start gap-3 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
-                    <div className="bg-yellow-500/20 p-2 rounded-full shrink-0"><AlertTriangle className="h-4 w-4 text-yellow-400" /></div>
-                    <div>
-                      <p className="text-sm font-medium">1 Coolwood Dr, AR</p>
-                      <p className="text-xs text-muted-foreground">$1.16M gross · 23,255 tokens · $750k mortgage</p>
+                  {topHoldings.map((h, i) => (
+                    <div key={i} className={`flex items-start gap-3 p-3 rounded-lg ${h.isCoolwood ? 'bg-yellow-500/10 border border-yellow-500/20' : 'bg-accent/30'}`}>
+                      <div className={`p-2 rounded-full shrink-0 ${h.isCoolwood ? 'bg-yellow-500/20' : i === 1 ? 'bg-green-500/20' : i === 2 ? 'bg-blue-500/20' : 'bg-purple-500/20'}`}>
+                        {h.isCoolwood ? <AlertTriangle className="h-4 w-4 text-yellow-400" /> :
+                         i === 1 ? <DollarSign className="h-4 w-4 text-green-400" /> :
+                         <Landmark className={`h-4 w-4 ${i === 2 ? 'text-blue-400' : 'text-purple-400'}`} />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">{h.address.split(',').slice(0, 2).join(',')}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatUSD(h.value)} · {h.tokens.toLocaleString()} tokens
+                          {h.isCoolwood && ` · $750k mortgage`}
+                          {h.apy7d > 0 && ` · ${h.apy7d.toFixed(1)}% APY`}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-start gap-3 p-3 rounded-lg bg-accent/30">
-                    <div className="bg-green-500/20 p-2 rounded-full shrink-0"><DollarSign className="h-4 w-4 text-green-400" /></div>
-                    <div>
-                      <p className="text-sm font-medium">9 Country Club Ln N, NY</p>
-                      <p className="text-xs text-muted-foreground">$14,505 · 690 tokens · 12.5% APY</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3 p-3 rounded-lg bg-accent/30">
-                    <div className="bg-blue-500/20 p-2 rounded-full shrink-0"><Landmark className="h-4 w-4 text-blue-400" /></div>
-                    <div>
-                      <p className="text-sm font-medium">85-104 Alawa Pl, HI</p>
-                      <p className="text-xs text-muted-foreground">$14,320 · 406 tokens · 19.0% APY</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3 p-3 rounded-lg bg-accent/30">
-                    <div className="bg-purple-500/20 p-2 rounded-full shrink-0"><Landmark className="h-4 w-4 text-purple-400" /></div>
-                    <div>
-                      <p className="text-sm font-medium">Madison Ave Cluster (4)</p>
-                      <p className="text-xs text-muted-foreground">$17,736 · Albany, NY</p>
-                    </div>
-                  </div>
+                  ))}
                 </div>
               </CardContent>
             </Card>
@@ -162,7 +176,8 @@ import React from 'react';
 
           <motion.div variants={itemVariants} className="mt-6">
             <p className="text-xs text-muted-foreground text-center">
-              Data sourced from Algorand Indexer + LoftyAssist API — 2 wallets (W1 + Treasury) — Last updated: 2026-03-23
+              Live on-chain data — Algorand Indexer + LoftyAssist API — W1 + Treasury wallets
+              {lastUpdated && ` — Fetched ${lastUpdated.toLocaleTimeString()}`}
             </p>
           </motion.div>
         </motion.div>
