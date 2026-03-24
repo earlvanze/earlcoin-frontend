@@ -2,10 +2,10 @@ import React from 'react';
     import { motion } from 'framer-motion';
     import PageTitle from '@/components/PageTitle';
     import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-    import { Landmark, Bitcoin, Coins, TrendingUp, MapPin, AlertTriangle, Sun, Home, Zap, Calendar, DollarSign, Loader2 } from 'lucide-react';
+    import { Landmark, MapPin, AlertTriangle, Home, Calendar, DollarSign, Loader2 } from 'lucide-react';
     import { usePortfolioData } from '@/hooks/usePortfolioData';
 
-    // Off-chain assets (static — not on Algorand)
+    // Off-chain assets (not on Algorand — static until we find an on-chain source)
     const offChainAssets = [
       {
         name: '110 N Saddle Dr, Idaho Springs, CO 80452',
@@ -18,8 +18,6 @@ import React from 'react';
         equityShare: 150558,
         details: '5BR/5BA geodesic dome · 5,320 sqft · 5.16 acres · 8,700ft elev · Income valuation: L12M dist-implied NOI $167.5k ÷ 5% cap (luxury STR)',
         monthlyPayment: 2477,
-        loanTermMonths: 360,
-        origBalance: 514000,
         state: 'CO',
         str: {
           totalRevenue: 2433855,
@@ -68,33 +66,6 @@ import React from 'react';
       },
     ];
 
-    const solarAsset = {
-      name: '24.15 kW Solar System — 110 N Saddle Dr',
-      note: 'Personal asset (not LLC-owned). Tesla Powerwall owned by LLC.',
-      cost: 100000,
-      loanBalance: 96000,
-      equity: 4000,
-      monthlyPayment: 129,
-      paymentType: 'Interest-only',
-      production: {
-        annualKwh: 31185,
-        monthlyAvgKwh: 2599,
-        annualValue: 2988,
-        monthlyAvgValue: 249,
-        gridUsageMonthly: 3159,
-        gridCostMonthly: 288,
-        coveragePercent: 82,
-        netMonthlySavings: 120,
-      },
-    };
-
-    const cryptoAssets = [
-      { name: 'USDC', symbol: 'USDC', value: '$909.71' },
-      { name: 'goBTC', symbol: 'goBTC', value: '~$3,000' },
-      { name: 'EARLDAO', symbol: 'EARL', value: '146 tokens' },
-      { name: 'ALPHA', symbol: 'ALPHA', value: '3,003 tokens' },
-    ];
-
     const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.05 } } };
     const itemVariants = { hidden: { y: 20, opacity: 0 }, visible: { y: 0, opacity: 1, transition: { type: 'spring' } } };
     const formatUSD = (val) => val.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
@@ -124,48 +95,43 @@ import React from 'react';
         );
       }
 
-      const { properties, coolwood, totalGross, totalMortgage, loftyGross } = data;
+      const { properties, coolwood, totalGross, stateCount } = data;
       const allProperties = coolwood ? [coolwood, ...properties] : properties;
       const llcEquityShare = offChainAssets[0].equityShare;
-      const debtShareLuna = Math.round(offChainAssets[0].mortgage * offChainAssets[0].ownershipPct / 100);
-      const totalDebt = debtShareLuna + solarAsset.loanBalance;
-      const grossAssets = totalGross + Math.round(offChainAssets[0].propertyValue * offChainAssets[0].ownershipPct / 100) + solarAsset.cost + 3910;
-      const netWorth = grossAssets - totalDebt;
       const str = offChainAssets[0].str;
-      const solar = solarAsset.production;
 
       return (
         <motion.div initial="hidden" animate="visible" variants={containerVariants}>
-          <PageTitle title="DAO Portfolio" description="Complete portfolio across tokenized properties, LLC interests, and personal assets." />
+          <PageTitle title="DAO Portfolio" description="On-chain tokenized properties + off-chain real estate interests." />
 
-          {/* Summary KPIs */}
+          {/* Summary KPIs — on-chain only */}
           <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Gross Assets</CardTitle></CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">On-Chain Value</CardTitle></CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{formatUSD(grossAssets)}</div>
-                <p className="text-xs text-muted-foreground">Lofty + LLC share + solar + crypto</p>
+                <div className="text-2xl font-bold">{formatUSD(totalGross)}</div>
+                <p className="text-xs text-muted-foreground">Lofty tokens (live from blockchain)</p>
               </CardContent>
             </Card>
-            <Card className="border-red-500/30">
-              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-red-400 flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> Total Debt</CardTitle></CardHeader>
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Tokenized Properties</CardTitle></CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-red-400">-{formatUSD(totalDebt)}</div>
-                <p className="text-xs text-muted-foreground">Luna share ${(debtShareLuna/1000).toFixed(0)}k + solar $96k</p>
+                <div className="text-2xl font-bold">{allProperties.length}</div>
+                <p className="text-xs text-muted-foreground">Across {stateCount} states</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Off-Chain Equity</CardTitle></CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-purple-400">{formatUSD(llcEquityShare)}</div>
+                <p className="text-xs text-muted-foreground">Luna Dome LLC (5.207%)</p>
               </CardContent>
             </Card>
             <Card className="border-green-500/30">
-              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-green-400">Net Equity</CardTitle></CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-green-400">Total Portfolio</CardTitle></CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-green-400">{formatUSD(netWorth)}</div>
-                <p className="text-xs text-muted-foreground">All assets minus all debt</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">On-Chain Properties</CardTitle></CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{allProperties.length}</div>
-                <p className="text-xs text-muted-foreground">Lofty value: {formatUSD(totalGross)} (live)</p>
+                <div className="text-2xl font-bold text-green-400">{formatUSD(totalGross + llcEquityShare)}</div>
+                <p className="text-xs text-muted-foreground">On-chain + off-chain</p>
               </CardContent>
             </Card>
           </motion.div>
@@ -187,7 +153,6 @@ import React from 'react';
                           <p className="text-xs text-muted-foreground">
                             {asset.tokens.toLocaleString()} tokens @ ${asset.lpPrice?.toFixed(2) || '?'}
                             {asset.wallet && <span className="ml-2 text-purple-400/60">[{asset.wallet}]</span>}
-                            
                           </p>
                         </div>
                       </div>
@@ -218,7 +183,7 @@ import React from 'react';
 
           {/* Off-chain Real Estate */}
           <motion.div variants={itemVariants} className="mb-8">
-            <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2"><Home /> Off-Chain Real Estate</h2>
+            <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2"><Home /> Other Property</h2>
             {offChainAssets.map((asset, index) => (
               <Card key={index} className="border-purple-500/20">
                 <CardHeader>
@@ -284,7 +249,7 @@ import React from 'react';
 
                   {/* Distributions */}
                   <div className="border-t border-border/20 pt-4">
-                    <h4 className="text-sm font-semibold text-green-400 mb-3 flex items-center gap-2"><DollarSign className="h-4 w-4" /> Your Distributions ({asset.distributions.yieldOnCost}% yield on cost)</h4>
+                    <h4 className="text-sm font-semibold text-green-400 mb-3 flex items-center gap-2"><DollarSign className="h-4 w-4" /> Distributions ({asset.distributions.yieldOnCost}% yield on cost)</h4>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                       <div>
                         <p className="text-xs text-muted-foreground">Total Received</p>
@@ -317,84 +282,9 @@ import React from 'react';
             ))}
           </motion.div>
 
-          {/* Solar System */}
-          <motion.div variants={itemVariants} className="mb-8">
-            <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2"><Sun className="text-yellow-400" /> Personal Assets</h2>
-            <Card className="border-yellow-500/20">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Sun className="h-5 w-5 text-yellow-400" />{solarAsset.name}</CardTitle>
-                <CardDescription>{solarAsset.note}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground">System Cost</p>
-                    <p className="text-lg font-bold">{formatUSD(solarAsset.cost)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Loan Balance</p>
-                    <p className="text-lg font-bold text-red-400">-{formatUSD(solarAsset.loanBalance)}</p>
-                    <p className="text-xs text-muted-foreground">${solarAsset.monthlyPayment}/mo ({solarAsset.paymentType})</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Current Equity</p>
-                    <p className="text-lg font-bold text-green-400">{formatUSD(solarAsset.equity)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Net Monthly Benefit</p>
-                    <p className="text-lg font-bold text-green-400">${solar.netMonthlySavings}/mo</p>
-                  </div>
-                </div>
-                <div className="border-t border-border/20 pt-4">
-                  <h4 className="text-sm font-semibold text-yellow-400 mb-3 flex items-center gap-2"><Zap className="h-4 w-4" /> Production & Usage</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Annual Production</p>
-                      <p className="text-lg font-bold">{solar.annualKwh.toLocaleString()} kWh</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Annual Value</p>
-                      <p className="text-lg font-bold">{formatUSD(solar.annualValue)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Grid Usage</p>
-                      <p className="text-lg font-bold">{solar.gridUsageMonthly.toLocaleString()} kWh/mo</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Solar Coverage</p>
-                      <p className="text-lg font-bold text-yellow-400">{solar.coveragePercent}%</p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          {/* Crypto */}
-          <motion.div variants={itemVariants} className="mb-8">
-            <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2"><Coins /> Crypto Treasury</h2>
-            <Card>
-              <CardContent className="p-0">
-                <div className="divide-y divide-border/20">
-                  {cryptoAssets.map((asset, index) => (
-                    <div key={index} className="flex items-center justify-between p-4 hover:bg-accent/50 transition-colors">
-                      <div className="flex items-center gap-4">
-                        <div className="bg-secondary p-3 rounded-full">
-                          {asset.symbol === 'goBTC' ? <Bitcoin className="h-5 w-5 text-orange-400" /> : asset.symbol === 'USDC' ? <DollarSign className="h-5 w-5 text-green-400" /> : <Coins className="h-5 w-5 text-purple-400" />}
-                        </div>
-                        <p className="font-bold">{asset.name} ({asset.symbol})</p>
-                      </div>
-                      <p className="font-semibold text-lg">{asset.value}</p>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-
           <motion.div variants={itemVariants}>
             <p className="text-xs text-muted-foreground text-center">
-              On-chain: Algorand Indexer + LoftyAssist (W1 + Treasury) · STR: Hospitable · Solar: Xcel Energy
+              On-chain: Algorand Indexer + LoftyAssist (W1 + Treasury) · Off-chain: Hospitable
               {lastUpdated && ` · Fetched ${lastUpdated.toLocaleTimeString()}`}
             </p>
           </motion.div>
