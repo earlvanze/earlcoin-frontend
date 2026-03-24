@@ -10,7 +10,7 @@ import { Loader2, Wallet, CreditCard, ArrowRightLeft, TrendingUp, TrendingDown, 
 import { useToast } from '@/components/ui/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAppContext } from '@/contexts/AppContext';
-import { useAuth } from '@/contexts/AuthContext.jsx';
+import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { cn } from '@/lib/utils';
 import { loadStripe } from '@stripe/stripe-js';
 import { STRIPE_PUBLISHABLE_KEY, EARL_STRIPE_PRICE_ID } from '@/lib/config';
