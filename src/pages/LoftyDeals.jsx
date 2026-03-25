@@ -22,12 +22,11 @@ const itemVariants = {
 
 // Property image URL helper - uses property_id or address-based URL
 const getPropertyImage = (deal) => {
-    // Use Lofty property page as primary source (has CORS-friendly images)
-    if (deal.property_id) {
-        return `https://www.lofty.ai/images/${deal.property_id}/thumb-min.webp`;
+    // Prioritize image_url from database (Compass Yield provides this)
+    if (deal.image_url && deal.image_url.startsWith('http')) {
+        return deal.image_url;
     }
-    if (deal.image_url) return deal.image_url;
-    // Fallback to Unsplash
+    // Fallback to Unsplash generic house image
     return 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=200&q=80';
 };
 
