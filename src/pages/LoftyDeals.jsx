@@ -22,11 +22,11 @@ const itemVariants = {
 
 // Property image URL helper - uses property_id or address-based URL
 const getPropertyImage = (deal) => {
-    if (deal.image_url) return deal.image_url;
+    // Use Lofty property page as primary source (has CORS-friendly images)
     if (deal.property_id) {
-        // Try Lofty's CDN first
-        return `https://images.lofty.ai/images/${deal.property_id}/thumb-min.webp`;
+        return `https://www.lofty.ai/images/${deal.property_id}/thumb-min.webp`;
     }
+    if (deal.image_url) return deal.image_url;
     // Fallback to Unsplash
     return 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=200&q=80';
 };
@@ -369,13 +369,12 @@ const LoftyDeals = () => {
                     setStrategyData(strategyData || []);
                 }
 
-                // Fetch cashflow opportunities (high CoC, ordered by CoC)
-                // Try both coc and cash_on_cash column names
+                // Fetch cashflow opportunities (high cap rate, ordered by cap_rate)
                 const { data: cashflowData, error: cashflowErr } = await supabase
                     .from('lofty_alpha_opportunities')
                     .select('*')
-                    .order('coc', { ascending: false }).limit(20)
-                    .order('coc', { ascending: false })
+                    .not('cap_rate', 'is', null)
+                    .order('cap_rate', { ascending: false })
                     .limit(20);
                 
                 if (!cashflowErr) {
