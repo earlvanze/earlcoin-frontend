@@ -53,8 +53,8 @@ const DealCard = ({ deal, type }) => {
                             <div className="flex items-center gap-2">
                                 <DollarSign className="h-5 w-5 text-primary" />
                                 <div>
-                                    <p className="text-sm text-muted-foreground">Listing Price</p>
-                                    <p className="font-bold text-lg">${deal.listingPrice.toLocaleString()}</p>
+                                    <p className="text-sm text-muted-foreground">If NAV Converges</p>
+                                    <p className="font-bold text-lg">{deal.navUpside > 0 ? "+" : ""}${deal.navUpside.toLocaleString()}</p>
                                 </div>
                             </div>
                         </>
@@ -100,16 +100,40 @@ const LoftyDeals = () => {
     useEffect(() => {
         const fetchDeals = async () => {
             try {
-                // Fetch from Supabase 'lofty_deals' table
-                const { data, error } = await supabase
-                    .from('lofty_deals')
-                    .select('*')
-                    .order('created_at', { ascending: false });
+                const [{ data: equityRaw, error: eqErr }, { data: cashflowRaw, error: cfErr }] = await Promise.all([
+                    supabase.from('lofty_equity_picks').select('*').order('last_updated', { ascending: false }),
+                    supabase.from('lofty_cashflow_picks').select('*').order('last_updated', { ascending: false }),
+                ]);
 
-                if (error) throw error;
+                if (eqErr) throw eqErr;
+                if (cfErr) throw cfErr;
 
-                const equity = data.filter(d => d.deal_type === 'equity');
-                const cashflow = data.filter(d => d.deal_type === 'cashflow');
+                const equity = (equityRaw || []).map(d => ({
+                    ...d,
+                    equityPotential: d.discount_to_nav && d.market_cap
+                        ? Math.round(Math.abs((d.discount_to_nav / 100) * d.market_cap))
+                        : 0,
+                    navUpside: d.total_investment && d.market_cap
+                        ? Math.round(d.total_investment - d.market_cap)
+                        : 0,
+                    discountToNav: d.discount_to_nav || 0,
+                    listingPrice: d.market_cap || 0,
+                    imageUrl: d.cover_image_url || `https://images.lofty.ai/images/${d.property_id}/thumb-min.webp`,
+                    sharesToBuy: d.total_tokens ? Math.round(d.total_tokens * 0.01) : 100,
+                    deal_type: 'equity',
+                }));
+
+                const cashflow = (cashflowRaw || []).map(d => ({
+                    ...d,
+                    coc: d.cash_on_cash || 0,
+                    monthlyRent: d.monthly_rent || 0,
+                    netYield: d.net_yield || 0,
+                    grossYield: d.gross_yield || 0,
+                    cashOnCash: d.cash_on_cash || 0,
+                    imageUrl: d.cover_image_url || `https://images.lofty.ai/images/${d.property_id}/thumb-min.webp`,
+                    sharesToBuy: d.total_investment ? Math.round(d.total_investment * 0.01 / (d.token_price || 1)) : 100,
+                    deal_type: 'cashflow',
+                }));
 
                 setEquityDeals(equity);
                 setCashflowDeals(cashflow);

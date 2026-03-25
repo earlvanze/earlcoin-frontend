@@ -204,9 +204,11 @@ import React from 'react';
                             {asset.capRate != null ? `${asset.capRate.toFixed(1)}%` : '—'}
                           </p>
                         </div>
-                        <div className="text-right min-w-[100px]">
+                        <div className="text-right min-w-[120px]">
                           <p className="font-semibold">{formatUSD(asset.value)}</p>
-                          <p className="text-xs text-muted-foreground">{(asset.value / totalGross * 100).toFixed(1)}%</p>
+                          <p className="text-xs text-muted-foreground">
+                            {(asset.value / totalGross * 100).toFixed(1)}% of portfolio
+                          </p>
                         </div>
                       </div>
                     </div>

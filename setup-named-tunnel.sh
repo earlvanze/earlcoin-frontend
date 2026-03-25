@@ -6,7 +6,6 @@ echo ""
 
 # Step 1: Login to Cloudflare
 echo "Step 1: Authenticate with Cloudflare"
-echo "This will open a browser window for OAuth login"
 cloudflared login
 
 if [ $? -ne 0 ]; then
@@ -14,30 +13,35 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-# Step 2: Create tunnel
+# Step 2: Create tunnel (skip if exists)
 echo ""
-echo "Step 2: Creating tunnel 'earlcoin-dev'..."
-TUNNEL_ID=$(cloudflared tunnel create earlcoin-dev 2>&1 | grep -oP '\b[0-9a-f]{36}\b' | head -1)
+echo "Step 2: Checking for existing tunnel..."
+TUNNEL_ID=$(cloudflared tunnel list --name earlcoin-dev 2>/dev/null | grep earlcoin-dev | awk '{print $1}')
 
 if [ -z "$TUNNEL_ID" ]; then
-  echo "Failed to create tunnel. Check error messages above."
-  exit 1
+  echo "Creating new tunnel 'earlcoin-dev'..."
+  TUNNEL_ID=$(cloudflared tunnel create earlcoin-dev 2>&1 | grep -oP '\b[0-9a-f]{36}\b' | head -1)
+  if [ -z "$TUNNEL_ID" ]; then
+    echo "Failed to create tunnel."
+    exit 1
+  fi
+  echo "✓ Tunnel created: $TUNNEL_ID"
+else
+  echo "✓ Tunnel already exists: $TUNNEL_ID"
 fi
 
-echo "Tunnel created: $TUNNEL_ID"
-
-# Step 3: Configure tunnel routing
+# Step 3: Configure tunnel routing (idempotent)
 echo ""
 echo "Step 3: Configuring DNS route..."
-cloudflared tunnel route dns earlcoin-dev dev.earlco.in
+cloudflared tunnel route dns earlcoin-dev dev.earlco.in 2>&1 | grep -q "already exists" && echo "✓ DNS route already configured" || echo "✓ DNS route added"
 
 # Step 4: Create config file
 echo ""
 echo "Step 4: Creating tunnel config..."
 mkdir -p $HOME/.cloudflared
 cat > $HOME/.cloudflared/earlcoin-dev.yml << YMLEOF
-tunnel: earlcoin-dev
-credentials-file: $HOME/.cloudflared/earlcoin-dev.json
+tunnel: $TUNNEL_ID
+credentials-file: $HOME/.cloudflared/${TUNNEL_ID}.json
 
 ingress:
   - hostname: dev.earlco.in
