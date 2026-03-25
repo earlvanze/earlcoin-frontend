@@ -163,7 +163,7 @@ import React from 'react';
       const totalDebt = totalMortgage + debtShareLuna + solarAsset.loanBalance;
       const grossAssets = totalGross + Math.round(offChainAssets[0].propertyValue * offChainAssets[0].ownershipPct / 100) + solarAsset.cost + 3910;
       const netWorth = grossAssets - totalDebt;
-      const str = offChainAssets[0].str;
+      // STR data accessed via asset.str in render
       const solar = solarAsset.production;
 
       return (
@@ -313,70 +313,74 @@ import React from 'react';
                   )}
 
                   {/* STR Performance */}
-                  <div className="border-t border-border/20 pt-4">
-                    <h4 className="text-sm font-semibold text-purple-400 mb-3 flex items-center gap-2"><Calendar className="h-4 w-4" /> Short-Term Rental Performance</h4>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                      <div>
-                        <p className="text-xs text-muted-foreground">All-Time Revenue</p>
-                        <p className="text-lg font-bold">{formatUSD(str.totalRevenue)}</p>
-                        <p className="text-xs text-muted-foreground">{str.allTimeBookings.toLocaleString()} bookings</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Last 12 Months</p>
-                        <p className="text-lg font-bold text-green-400">{formatUSD(str.l12mRevenue)}</p>
-                        <p className="text-xs text-muted-foreground">{str.l12mBookings} bookings</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">L12M ADR</p>
-                        <p className="text-lg font-bold">${str.l12mADR}</p>
-                        <p className="text-xs text-muted-foreground">{str.avgStay} nights avg stay</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Occupancy</p>
-                        <p className="text-lg font-bold">{str.occupancy}%</p>
-                        <p className="text-xs text-muted-foreground">Airbnb {str.platforms.airbnb}%</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2 flex-wrap">
-                      {str.yearlyRevenue.map((yr, i) => (
-                        <div key={i} className="bg-accent/40 rounded px-3 py-1 text-center">
-                          <p className="text-xs text-muted-foreground">{yr.year}</p>
-                          <p className="text-sm font-semibold">${(yr.rev/1000).toFixed(0)}k</p>
+                  {asset.str && (
+                    <div className="border-t border-border/20 pt-4">
+                      <h4 className="text-sm font-semibold text-purple-400 mb-3 flex items-center gap-2"><Calendar className="h-4 w-4" /> Short-Term Rental Performance</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                        <div>
+                          <p className="text-xs text-muted-foreground">All-Time Revenue</p>
+                          <p className="text-lg font-bold">{formatUSD(asset.str.totalRevenue)}</p>
+                          <p className="text-xs text-muted-foreground">{asset.str.allTimeBookings.toLocaleString()} bookings</p>
                         </div>
-                      ))}
+                        <div>
+                          <p className="text-xs text-muted-foreground">Last 12 Months</p>
+                          <p className="text-lg font-bold text-green-400">{formatUSD(asset.str.l12mRevenue)}</p>
+                          <p className="text-xs text-muted-foreground">{asset.str.l12mBookings} bookings</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">L12M ADR</p>
+                          <p className="text-lg font-bold">${asset.str.l12mADR}</p>
+                          <p className="text-xs text-muted-foreground">{asset.str.avgStay} nights avg stay</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Occupancy</p>
+                          <p className="text-lg font-bold">{asset.str.occupancy}%</p>
+                          <p className="text-xs text-muted-foreground">Airbnb {asset.str.platforms.airbnb}%</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 flex-wrap">
+                        {asset.str.yearlyRevenue.map((yr, i) => (
+                          <div key={i} className="bg-accent/40 rounded px-3 py-1 text-center">
+                            <p className="text-xs text-muted-foreground">{yr.year}</p>
+                            <p className="text-sm font-semibold">${(yr.rev/1000).toFixed(0)}k</p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Distributions */}
-                  <div className="border-t border-border/20 pt-4">
-                    <h4 className="text-sm font-semibold text-green-400 mb-3 flex items-center gap-2"><DollarSign className="h-4 w-4" /> Your Distributions ({asset.distributions.yieldOnCost}% yield on cost)</h4>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                      <div>
-                        <p className="text-xs text-muted-foreground">Total Received</p>
-                        <p className="text-lg font-bold text-green-400">{formatUSD(asset.distributions.total)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Annualized</p>
-                        <p className="text-lg font-bold">{formatUSD(asset.distributions.annualized)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Avg Monthly</p>
-                        <p className="text-lg font-bold">${asset.distributions.avgMonthly}/mo</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Period</p>
-                        <p className="text-sm font-medium">{asset.distributions.period}</p>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-1">
-                      {asset.distributions.history.map((d, i) => (
-                        <div key={i} className={`text-center rounded px-1 py-1 text-xs ${d.source === 'LLC' ? 'bg-green-500/10' : 'bg-blue-500/10'}`}>
-                          <p className="text-muted-foreground">{d.date.slice(5)}</p>
-                          <p className="font-medium">${d.amount.toFixed(0)}</p>
+                  {asset.distributions && (
+                    <div className="border-t border-border/20 pt-4">
+                      <h4 className="text-sm font-semibold text-green-400 mb-3 flex items-center gap-2"><DollarSign className="h-4 w-4" /> Your Distributions ({asset.distributions.yieldOnCost}% yield on cost)</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Total Received</p>
+                          <p className="text-lg font-bold text-green-400">{formatUSD(asset.distributions.total)}</p>
                         </div>
-                      ))}
+                        <div>
+                          <p className="text-xs text-muted-foreground">Annualized</p>
+                          <p className="text-lg font-bold">{formatUSD(asset.distributions.annualized)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Avg Monthly</p>
+                          <p className="text-lg font-bold">${asset.distributions.avgMonthly}/mo</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Period</p>
+                          <p className="text-sm font-medium">{asset.distributions.period}</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-1">
+                        {asset.distributions.history.map((d, i) => (
+                          <div key={i} className={`text-center rounded px-1 py-1 text-xs ${d.source === 'LLC' ? 'bg-green-500/10' : 'bg-blue-500/10'}`}>
+                            <p className="text-muted-foreground">{d.date.slice(5)}</p>
+                            <p className="font-medium">${d.amount.toFixed(0)}</p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </CardContent>
               </Card>
             ))}
