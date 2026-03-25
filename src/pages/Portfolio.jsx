@@ -1,4 +1,5 @@
 import React from 'react';
+import { getFmvDiscount } from '@/data/propertyFmv';
     import { motion } from 'framer-motion';
     import PageTitle from '@/components/PageTitle';
     import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -158,7 +159,7 @@ import React from 'react';
         );
       }
 
-      const { properties, coolwood, solarAsset, totalGross, totalMortgage, loftyGross, cryptoAssets = [] } = data;
+      const { properties, coolwood, solarAsset, totalGross, totalMortgage, loftyGross, loftyFmv, cryptoAssets = [] } = data;
       const allProperties = coolwood ? [coolwood, ...properties] : properties;
       const llcEquityShare = offChainAssets[0].equityShare;
       const debtShareLuna = Math.round(offChainAssets[0].mortgage * offChainAssets[0].ownershipPct / 100);
@@ -204,7 +205,10 @@ import React from 'react';
               <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">On-Chain Properties</CardTitle></CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{allProperties.length}</div>
-                <p className="text-xs text-muted-foreground">Lofty value: {formatUSD(totalGross)} (live)</p>
+                <p className="text-xs text-muted-foreground">LP: {formatUSD(totalGross)}</p>
+                {loftyFmv > totalGross && (
+                  <p className="text-xs text-green-400">FMV: {formatUSD(loftyFmv)} (+{formatUSD(loftyFmv - totalGross)})</p>
+                )}
               </CardContent>
             </Card>
           </motion.div>
@@ -249,6 +253,20 @@ import React from 'react';
                             {((asset.value || 0) / (totalGross || 1) * 100).toFixed(1)}% of portfolio
                           </p>
                         </div>
+                        {(asset.fmv && asset.fmv !== asset.value) && (
+                          <div className="text-right min-w-[120px]">
+                            <p className="text-sm font-medium text-green-400">{formatUSD(asset.fmv)} FMV</p>
+                            {(() => {
+                              const disc = asset.lpPrice && asset.totalTokens > 0
+                                ? ((asset.lpPrice * asset.totalTokens - asset.fmv) / asset.fmv * 100)
+                                : null;
+                              if (disc == null) return null;
+                              return <p className={`text-xs font-medium ${disc < 0 ? 'text-green-400' : disc > 0 ? 'text-red-400' : 'text-muted-foreground'}`}>
+                                {disc > 0 ? '+' : ''}{disc.toFixed(1)}% FMV gap
+                              </p>;
+                            })()}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
