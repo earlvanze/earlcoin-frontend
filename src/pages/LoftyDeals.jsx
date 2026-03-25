@@ -182,127 +182,8 @@ const AlphaCard = ({ deal }) => {
     );
 };
 
-const LPCard = ({ deal }) => {
-    const navigate = useNavigate();
-    const { toast } = useToast();
-    
-    const loftyUrl = deal.property_id ? `https://www.lofty.ai/property/${deal.property_id}` : null;
-    
-    const apy7d = deal.apy_7d || 0;
-    const apy30d = deal.apy_30d || 0;
-    const vol24h = deal.vol_24h || 0;
-    const vol7d = deal.vol_7d || 0;
-    
-    const handleCreateProposal = () => {
-        const params = new URLSearchParams({
-            type: 'lp',
-            property_id: deal.property_id || '',
-            address: deal.address || '',
-            city: deal.city || '',
-            state: deal.state || '',
-            token_price: deal.market_price || '',
-            apy_7d: apy7d.toString(),
-            apy_30d: apy30d.toString(),
-            vol_24h: vol24h.toString(),
-        });
-        
-        navigate(`/proposals/new?${params.toString()}`);
-        
-        toast({
-            title: "Creating Proposal",
-            description: `Drafting LP proposal for ${deal.address}`,
-        });
-    };
-    
-    const getApyColor = (apy) => {
-        if (apy >= 20) return 'text-green-400';
-        if (apy >= 15) return 'text-emerald-400';
-        if (apy >= 10) return 'text-yellow-400';
-        return 'text-orange-400';
-    };
-
-    return (
-        <motion.div variants={itemVariants}>
-            <Card className="overflow-hidden transition-all duration-300 hover:shadow-primary/20 hover:shadow-lg">
-                <CardHeader className="p-0">
-                    <img 
-                        src={deal.image_url || `https://images.lofty.ai/images/${deal.property_id}/thumb-min.webp`} 
-                        alt={`Property at ${deal.address}`} 
-                        className="w-full h-40 object-cover"
-                        onError={(e) => {
-                            e.target.src = 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&q=80';
-                        }}
-                    />
-                    <div className="p-4">
-                        <div className="flex justify-between items-start">
-                            <div className="flex-1">
-                                <CardTitle className="text-base">{deal.address}</CardTitle>
-                            </div>
-                            {loftyUrl && (
-                                <a 
-                                    href={loftyUrl} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="text-muted-foreground hover:text-primary transition-colors"
-                                >
-                                    <ExternalLink className="h-4 w-4" />
-                                </a>
-                            )}
-                        </div>
-                        <p className="text-xs text-muted-foreground">{deal.city}, {deal.state}</p>
-                    </div>
-                </CardHeader>
-                
-                <CardContent className="px-4 pb-4 space-y-3">
-                    {/* APY Badge */}
-                    <div className="bg-gradient-to-r from-blue-500/20 to-cyan-500/20 rounded-lg p-3 text-center">
-                        <div className="flex items-center justify-center gap-2 mb-1">
-                            <Percent className="h-4 w-4 text-cyan-400" />
-                            <span className="text-xs text-muted-foreground">LP APY (7d)</span>
-                        </div>
-                        <p className={`text-2xl font-bold ${getApyColor(apy7d)}`}>
-                            {apy7d.toFixed(1)}%
-                        </p>
-                    </div>
-                    
-                    {/* APY & Volume */}
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div className="bg-secondary/30 rounded p-2">
-                            <p className="text-xs text-muted-foreground">30d APY</p>
-                            <p className="font-bold">{apy30d.toFixed(1)}%</p>
-                        </div>
-                        <div className="bg-secondary/30 rounded p-2">
-                            <p className="text-xs text-muted-foreground">24h Vol</p>
-                            <p className="font-bold">${vol24h.toLocaleString()}</p>
-                        </div>
-                    </div>
-                    
-                    {/* Price & Volume */}
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                            <DollarSign className="h-3 w-3" />
-                            <span>Price: ${deal.market_price?.toFixed(2) || '—'}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                            <Activity className="h-3 w-3" />
-                            <span>7d Vol: ${vol7d.toLocaleString()}</span>
-                        </div>
-                    </div>
-                </CardContent>
-                
-                <CardFooter className="bg-secondary/30 p-3">
-                    <Button onClick={handleCreateProposal} size="sm" className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700">
-                        <FilePlus className="mr-2 h-4 w-4" /> Create LP Proposal
-                    </Button>
-                </CardFooter>
-            </Card>
-        </motion.div>
-    );
-};
-
 const LoftyDeals = () => {
     const [alphaDeals, setAlphaDeals] = useState([]);
-    const [lpDeals, setLpDeals] = useState([]);
     const [equityDeals, setEquityDeals] = useState([]);
     const [cashflowDeals, setCashflowDeals] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -319,17 +200,7 @@ const LoftyDeals = () => {
                     .order('proposal_rank', { ascending: true });
                 
                 if (alphaErr) throw alphaErr;
-                
-                // Fetch LP opportunities (ordered by APY)
-                const { data: lpData, error: lpErr } = await supabase
-                    .from('lofty_alpha_opportunities')
-                    .select('*')
-                    .not('apy_7d', 'is', null)
-                    .order('apy_7d', { ascending: false })
-                    .limit(20);
-                
-                if (lpErr) throw lpErr;
-                
+
                 // Also try to fetch legacy tables (may not exist)
                 const [equityRes, cashflowRes] = await Promise.all([
                     supabase.from('lofty_equity_picks').select('*').order('last_updated', { ascending: false }),
@@ -337,7 +208,6 @@ const LoftyDeals = () => {
                 ]);
 
                 setAlphaDeals(alphaData || []);
-                setLpDeals(lpData || []);
                 setEquityDeals(equityRes.data || []);
                 setCashflowDeals(cashflowRes.data || []);
             } catch (err) {
@@ -373,13 +243,13 @@ const LoftyDeals = () => {
         );
     }
 
-    const hasDeals = alphaDeals.length > 0 || lpDeals.length > 0 || equityDeals.length > 0 || cashflowDeals.length > 0;
+    const hasDeals = alphaDeals.length > 0 || equityDeals.length > 0 || cashflowDeals.length > 0;
 
     return (
         <motion.div initial="hidden" animate="visible" variants={containerVariants}>
           <PageTitle 
             title="Lofty.ai Investment Deals" 
-            description="Alpha opportunities and LP yield plays analyzed by Compass Yield." 
+            description="Alpha opportunities analyzed by Compass Yield. NAV vs market price analysis with investment thesis drafts." 
             icon={<Bot className="h-8 w-8 text-primary" />}
           />
           
@@ -394,14 +264,10 @@ const LoftyDeals = () => {
           ) : (
             <Tabs defaultValue="alpha" className="space-y-6">
               <motion.div variants={itemVariants}>
-                  <TabsList className="grid w-full grid-cols-4 max-w-2xl mx-auto mb-8">
+                  <TabsList className="grid w-full grid-cols-3 max-w-lg mx-auto mb-8">
                       <TabsTrigger value="alpha">
                           <Sparkles className="mr-2 h-4 w-4" /> 
                           Alpha ({alphaDeals.length})
-                      </TabsTrigger>
-                      <TabsTrigger value="lp">
-                          <Percent className="mr-2 h-4 w-4" /> 
-                          LP Yield ({lpDeals.length})
                       </TabsTrigger>
                       <TabsTrigger value="equity">
                           <TrendingUp className="mr-2 h-4 w-4" /> 
@@ -423,19 +289,6 @@ const LoftyDeals = () => {
                   ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                           {alphaDeals.map(deal => <AlphaCard key={deal.property_id || deal.id} deal={deal} />)}
-                      </div>
-                  )}
-              </TabsContent>
-              
-              <TabsContent value="lp">
-                  {lpDeals.length === 0 ? (
-                      <Card className="p-8 text-center">
-                          <Percent className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                          <p className="text-muted-foreground">No LP yield opportunities identified currently.</p>
-                      </Card>
-                  ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                          {lpDeals.map(deal => <LPCard key={deal.property_id || deal.id} deal={deal} />)}
                       </div>
                   )}
               </TabsContent>
