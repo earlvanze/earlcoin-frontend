@@ -259,7 +259,8 @@ const CashflowCard = ({ deal }) => {
     const { toast } = useToast();
     const [imgError, setImgError] = useState(false);
     
-    const coc = deal.coc || deal.cash_on_cash || 0;
+    const capRate = deal.cap_rate ? (deal.cap_rate * 100).toFixed(1) : '—';
+    const coc = deal.coc ? (deal.coc * 100).toFixed(1) : '—';
     const loftyUrl = deal.property_id ? `https://www.lofty.ai/property/${deal.property_id}` : null;
 
     const handleCreateProposal = () => {
@@ -305,10 +306,10 @@ const CashflowCard = ({ deal }) => {
                         
                         <div className="flex items-center gap-2 mt-2">
                             <Percent className="h-4 w-4 text-green-400" />
-                            <span className={`text-lg font-bold ${getCocColor(coc)}`}>
-                                {(coc * 100).toFixed(1)}%
+                            <span className="text-lg font-bold text-green-400">
+                                {capRate}%
                             </span>
-                            <span className="text-xs text-muted-foreground">CoC</span>
+                            <span className="text-xs text-muted-foreground">Cap Rate</span>
                         </div>
                         
                         <div className="flex gap-3 mt-1.5 text-[10px]">
@@ -316,10 +317,10 @@ const CashflowCard = ({ deal }) => {
                                 <span className="text-muted-foreground">Price:</span>
                                 <span className="ml-1 font-medium">${deal.market_price?.toFixed(2) || '—'}</span>
                             </div>
-                            {deal.cap_rate && (
+                            {coc !== '—' && (
                                 <div>
-                                    <span className="text-muted-foreground">Cap:</span>
-                                    <span className="ml-1 font-medium">{(deal.cap_rate * 100).toFixed(1)}%</span>
+                                    <span className="text-muted-foreground">CoC:</span>
+                                    <span className="ml-1 font-medium">{coc}%</span>
                                 </div>
                             )}
                         </div>
@@ -373,7 +374,7 @@ const LoftyDeals = () => {
                 const { data: cashflowData, error: cashflowErr } = await supabase
                     .from('lofty_alpha_opportunities')
                     .select('*')
-                    .or('coc.gt.0.08,cash_on_cash.gt.0.08')
+                    .order('coc', { ascending: false }).limit(20)
                     .order('coc', { ascending: false })
                     .limit(20);
                 
