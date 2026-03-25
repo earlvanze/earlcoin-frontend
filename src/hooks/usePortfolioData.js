@@ -111,10 +111,15 @@ export function usePortfolioData() {
             continue;
           }
           
-          // Track Solar tokens - both wallets query same underlying account (GOV_ADMIN = TREASURY)
-          // All tokens show up as GovAdmin since GOV_ADMIN wallet created the ASA
+          // Track Solar tokens separately by wallet
+          // TREASURY = DAO equity (actual ownership)
+          // GOV_ADMIN = Loan escrow (collateral, NOT DAO equity)
           if (SOLAR_ASA && asset.assetId === SOLAR_ASA) {
-            solarTreasuryTokens += asset.amount; // All in one conceptual wallet
+            if (asset.wallet === 'Treasury') {
+              solarTreasuryTokens += asset.amount; // Equity tokens
+            } else if (asset.wallet === 'GovAdmin') {
+              solarEscrowTokens += asset.amount; // Escrow tokens (loan collateral)
+            }
             continue;
           }
 
@@ -204,22 +209,21 @@ export function usePortfolioData() {
           isCoolwood: true,
         } : null;
 
-        // Build solar asset data (GOV_ADMIN = TREASURY, so all tokens in one wallet)
-        // Conceptual split: equity=80 tokens ($4k), escrow=1920 tokens ($96k loan)
-        const solarTotalTokens = solarTreasuryTokens; // All tokens in single wallet
-        const solarEquityTokens = SOLAR_EQUITY_SHARES;  // 80 conceptual equity tokens
-        const solarEscrowTokens_actual = SOLAR_ESCROW_SHARES; // 1920 conceptual escrow tokens
+        // Build solar asset data from actual on-chain balances
+        // TREASURY = DAO equity (actual ownership)
+        // GOV_ADMIN = Loan escrow (collateral, NOT DAO equity)
+        const solarTotalTokens = solarTreasuryTokens + solarEscrowTokens;
         const solarAsset = (SOLAR_ASA && solarTotalTokens > 0) ? {
           assetId: SOLAR_ASA,
-          treasuryShares: solarEquityTokens,         // 80 equity tokens (Treasury conceptual)
-          escrowShares: solarEscrowTokens_actual,   // 1920 escrow tokens (loan portion)
-          totalShares: solarTotalTokens,            // 2000 total tokens held
+          treasuryShares: solarTreasuryTokens,      // From TREASURY wallet (DAO equity)
+          escrowShares: solarEscrowTokens,           // From GOV_ADMIN wallet (loan escrow)
+          totalShares: solarTotalTokens,
           tokenPrice: SOLAR_TOKEN_PRICE,
           totalValue: solarTotalTokens * SOLAR_TOKEN_PRICE,
-          treasuryValue: solarEquityTokens * SOLAR_TOKEN_PRICE, // $4k equity in fund
-          escrowValue: solarEscrowTokens_actual * SOLAR_TOKEN_PRICE, // $96k locked
+          treasuryValue: solarTreasuryTokens * SOLAR_TOKEN_PRICE,
+          escrowValue: solarEscrowTokens * SOLAR_TOKEN_PRICE,
           loanBalance: SOLAR_LOAN_BALANCE,
-          equity: solarEquityTokens * SOLAR_TOKEN_PRICE, // $4k equity
+          equity: solarTreasuryTokens * SOLAR_TOKEN_PRICE, // Only Treasury counts as equity
         } : null;
 
         const stateValues = {};
