@@ -2,8 +2,9 @@ import React from 'react';
     import { motion } from 'framer-motion';
     import PageTitle from '@/components/PageTitle';
     import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-    import { Landmark, Bitcoin, Coins, TrendingUp, MapPin, AlertTriangle, Sun, Home, Zap, Calendar, DollarSign, Loader2 } from 'lucide-react';
+    import { Landmark, Bitcoin, Coins, TrendingUp, MapPin, AlertTriangle, Sun, Home, Zap, Calendar, DollarSign, Loader2, Lock } from 'lucide-react';
     import { usePortfolioData } from '@/hooks/usePortfolioData';
+    import { SOLAR_ASA } from '@/lib/wallets';
 
     // Off-chain assets (static — not on Algorand)
     const offChainAssets = [
@@ -107,9 +108,10 @@ import React from 'react';
 
     ];
 
-    const solarAsset = {
+    // Static solar data (fallback when ASA not yet created)
+    const staticSolarAsset = {
       name: '24.15 kW Solar System — 110 N Saddle Dr',
-      note: 'Personal asset (not LLC-owned). Tesla Powerwall owned by LLC.',
+      note: 'ECSOLAR (ASA 3492895002). Solar system owned by Earl Co, Powerwall by LLC.',
       cost: 100000,
       loanBalance: 96000,
       equity: 4000,
@@ -156,15 +158,20 @@ import React from 'react';
         );
       }
 
-      const { properties, coolwood, totalGross, totalMortgage, loftyGross, cryptoAssets = [] } = data;
+      const { properties, coolwood, solarAsset, totalGross, totalMortgage, loftyGross, cryptoAssets = [] } = data;
       const allProperties = coolwood ? [coolwood, ...properties] : properties;
       const llcEquityShare = offChainAssets[0].equityShare;
       const debtShareLuna = Math.round(offChainAssets[0].mortgage * offChainAssets[0].ownershipPct / 100);
-      const totalDebt = totalMortgage + debtShareLuna + solarAsset.loanBalance;
-      const grossAssets = totalGross + Math.round(offChainAssets[0].propertyValue * offChainAssets[0].ownershipPct / 100) + solarAsset.cost + 3910;
+      
+      // Use dynamic solar data if available, otherwise fallback to static
+      const solarCost = solarAsset ? solarAsset.totalValue : staticSolarAsset.cost;
+      const solarLoanBalance = solarAsset ? solarAsset.loanBalance : staticSolarAsset.loanBalance;
+      const solarEquity = solarAsset ? solarAsset.equity : staticSolarAsset.equity;
+      
+      const totalDebt = totalMortgage + debtShareLuna + solarLoanBalance;
+      const grossAssets = totalGross + Math.round(offChainAssets[0].propertyValue * offChainAssets[0].ownershipPct / 100) + solarCost + 3910;
       const netWorth = grossAssets - totalDebt;
-      // STR data accessed via asset.str in render
-      const solar = solarAsset.production;
+      const solar = staticSolarAsset.production;
 
       return (
         <motion.div initial="hidden" animate="visible" variants={containerVariants}>
@@ -183,7 +190,7 @@ import React from 'react';
               <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-red-400 flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> Total Debt</CardTitle></CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-red-400">-{formatUSD(totalDebt)}</div>
-                <p className="text-xs text-muted-foreground">Coolwood $750k + Luna share ${(debtShareLuna/1000).toFixed(0)}k + solar $96k</p>
+                <p className="text-xs text-muted-foreground">Coolwood $750k + Luna share ${(debtShareLuna/1000).toFixed(0)}k + solar ${(solarLoanBalance/1000).toFixed(0)}k</p>
               </CardContent>
             </Card>
             <Card className="border-green-500/30">
@@ -391,23 +398,46 @@ import React from 'react';
             <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2"><Sun className="text-yellow-400" /> Personal Assets</h2>
             <Card className="border-yellow-500/20">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Sun className="h-5 w-5 text-yellow-400" />{solarAsset.name}</CardTitle>
-                <CardDescription>{solarAsset.note}</CardDescription>
+                <CardTitle className="flex items-center gap-2">
+                  <Sun className="h-5 w-5 text-yellow-400" />
+                  {staticSolarAsset.name}
+                  {SOLAR_ASA && solarAsset && (
+                    <span className="ml-2 text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded">ON-CHAIN</span>
+                  )}
+                </CardTitle>
+                <CardDescription>{staticSolarAsset.note}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
                     <p className="text-xs text-muted-foreground">System Cost</p>
-                    <p className="text-lg font-bold">{formatUSD(solarAsset.cost)}</p>
+                    <p className="text-lg font-bold">{formatUSD(solarCost)}</p>
+                    {solarAsset && (
+                      <p className="text-xs text-muted-foreground">
+                        {solarAsset.totalShares.toLocaleString()} SOLAR @ $50
+                      </p>
+                    )}
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">Loan Balance</p>
-                    <p className="text-lg font-bold text-red-400">-{formatUSD(solarAsset.loanBalance)}</p>
-                    <p className="text-xs text-muted-foreground">${solarAsset.monthlyPayment}/mo ({solarAsset.paymentType})</p>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Lock className="h-3 w-3" /> Loan Balance (Escrow)
+                    </p>
+                    <p className="text-lg font-bold text-red-400">-{formatUSD(solarLoanBalance)}</p>
+                    {solarAsset && (
+                      <p className="text-xs text-muted-foreground">
+                        {solarAsset.escrowShares.toLocaleString()} shares locked in gov admin
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground">${staticSolarAsset.monthlyPayment}/mo ({staticSolarAsset.paymentType})</p>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">Current Equity</p>
-                    <p className="text-lg font-bold text-green-400">{formatUSD(solarAsset.equity)}</p>
+                    <p className="text-xs text-muted-foreground">Current Equity (Treasury)</p>
+                    <p className="text-lg font-bold text-green-400">{formatUSD(solarEquity)}</p>
+                    {solarAsset && (
+                      <p className="text-xs text-muted-foreground">
+                        {solarAsset.treasuryShares.toLocaleString()} shares in treasury
+                      </p>
+                    )}
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Net Monthly Benefit</p>
@@ -474,6 +504,7 @@ import React from 'react';
           <motion.div variants={itemVariants}>
             <p className="text-xs text-muted-foreground text-center">
               On-chain: Algorand Indexer + LoftyAssist (W1 + Treasury) · STR: Hospitable · Solar: Xcel Energy
+              {SOLAR_ASA && ' · Solar ASA: ' + SOLAR_ASA}
               {lastUpdated && ` · Fetched ${lastUpdated.toLocaleTimeString()}`}
             </p>
           </motion.div>

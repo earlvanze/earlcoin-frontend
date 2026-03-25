@@ -1,6 +1,18 @@
 import { getFmvPerToken } from '@/data/propertyFmv';
 import { useState, useEffect } from 'react';
-import { WALLETS, INDEXER_BASE, LOFTY_API, COOLWOOD_ASA, COOLWOOD_TOKEN_PRICE, COOLWOOD_MORTGAGE } from '@/lib/wallets';
+import { 
+  WALLETS, 
+  INDEXER_BASE, 
+  LOFTY_API, 
+  COOLWOOD_ASA, 
+  COOLWOOD_TOKEN_PRICE, 
+  COOLWOOD_MORTGAGE,
+  SOLAR_ASA,
+  SOLAR_TOKEN_PRICE,
+  SOLAR_TOTAL_SHARES,
+  SOLAR_PRINCIPAL_SHARES,
+  SOLAR_LOAN_BALANCE,
+} from '@/lib/wallets';
 
 async function fetchAllAssets(address) {
   const url = `${INDEXER_BASE}/v2/accounts/${address}/assets?limit=200`;
@@ -70,9 +82,11 @@ export function usePortfolioData() {
 
     async function load() {
       try {
-        const [w1Assets, treasuryAssets, loftyRaw] = await Promise.all([
+        // Fetch assets from all wallets
+        const [w1Assets, treasuryAssets, govAdminAssets, loftyRaw] = await Promise.all([
           fetchAllAssets(WALLETS.W1),
           fetchAllAssets(WALLETS.TREASURY),
+          fetchAllAssets(WALLETS.GOV_ADMIN).catch(() => []), // May not exist yet
           fetchLoftyProperties(),
         ]);
 
@@ -80,16 +94,31 @@ export function usePortfolioData() {
         const allAssets = [
           ...w1Assets.map(a => ({ ...a, wallet: 'W1' })),
           ...treasuryAssets.map(a => ({ ...a, wallet: 'Treasury' })),
+          ...govAdminAssets.map(a => ({ ...a, wallet: 'GovAdmin' })),
         ];
 
         const properties = [];
         let coolwoodTokens = 0;
+        let solarTreasuryTokens = 0;
+        let solarEscrowTokens = 0;
 
         for (const asset of allAssets) {
+          // Track Coolwood tokens
           if (asset.assetId === COOLWOOD_ASA) {
             coolwoodTokens += asset.amount;
             continue;
           }
+          
+          // Track Solar tokens by wallet
+          if (SOLAR_ASA && asset.assetId === SOLAR_ASA) {
+            if (asset.wallet === 'Treasury') {
+              solarTreasuryTokens += asset.amount;
+            } else if (asset.wallet === 'GovAdmin') {
+              solarEscrowTokens += asset.amount;
+            }
+            continue;
+          }
+
           const prop = lookup[asset.assetId];
           if (prop) {
             const existing = properties.find(p => p.address === prop.address);
@@ -121,9 +150,10 @@ export function usePortfolioData() {
           }
         }
 
-        // Collect non-Lofty, non-Coolwood assets as crypto
+        // Collect non-Lofty, non-Coolwood, non-Solar assets as crypto
         const knownAssetIds = new Set(Object.keys(lookup).map(Number));
         knownAssetIds.add(COOLWOOD_ASA);
+        if (SOLAR_ASA) knownAssetIds.add(SOLAR_ASA);
         const unknownAssets = allAssets.filter(a => !knownAssetIds.has(a.assetId));
 
         // Deduplicate by assetId (sum across wallets)
@@ -175,6 +205,21 @@ export function usePortfolioData() {
           isCoolwood: true,
         } : null;
 
+        // Build solar asset data (dynamic based on treasury holdings)
+        const solarTotalTokens = solarTreasuryTokens + solarEscrowTokens;
+        const solarAsset = (SOLAR_ASA && solarTotalTokens > 0) ? {
+          assetId: SOLAR_ASA,
+          treasuryShares: solarTreasuryTokens,
+          escrowShares: solarEscrowTokens,
+          totalShares: solarTotalTokens,
+          tokenPrice: SOLAR_TOKEN_PRICE,
+          totalValue: solarTotalTokens * SOLAR_TOKEN_PRICE,
+          treasuryValue: solarTreasuryTokens * SOLAR_TOKEN_PRICE, // Available equity in fund
+          escrowValue: solarEscrowTokens * SOLAR_TOKEN_PRICE,     // Principal balance locked
+          loanBalance: SOLAR_LOAN_BALANCE,
+          equity: solarTreasuryTokens * SOLAR_TOKEN_PRICE,        // Equity = treasury shares value
+        } : null;
+
         const stateValues = {};
         if (coolwood) {
           stateValues[coolwood.state] = (stateValues[coolwood.state] || 0) + coolwood.value;
@@ -203,6 +248,7 @@ export function usePortfolioData() {
           setData({
             properties,
             coolwood,
+            solarAsset,  // New: dynamic solar data
             stateValues,
             loftyGross,
             coolwoodGross,
