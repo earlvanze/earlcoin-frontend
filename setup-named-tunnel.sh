@@ -1,0 +1,54 @@
+#!/bin/bash
+# One-time setup for named Cloudflare Tunnel at dev.earlco.in
+
+echo "=== Named Tunnel Setup for dev.earlco.in ==="
+echo ""
+
+# Step 1: Login to Cloudflare
+echo "Step 1: Authenticate with Cloudflare"
+echo "This will open a browser window for OAuth login"
+cloudflared login
+
+if [ $? -ne 0 ]; then
+  echo "Login failed. Please run 'cloudflared login' manually."
+  exit 1
+fi
+
+# Step 2: Create tunnel
+echo ""
+echo "Step 2: Creating tunnel 'earlcoin-dev'..."
+TUNNEL_ID=$(cloudflared tunnel create earlcoin-dev 2>&1 | grep -oP '\b[0-9a-f]{36}\b' | head -1)
+
+if [ -z "$TUNNEL_ID" ]; then
+  echo "Failed to create tunnel. Check error messages above."
+  exit 1
+fi
+
+echo "Tunnel created: $TUNNEL_ID"
+
+# Step 3: Configure tunnel routing
+echo ""
+echo "Step 3: Configuring DNS route..."
+cloudflared tunnel route dns earlcoin-dev dev.earlco.in
+
+# Step 4: Create config file
+echo ""
+echo "Step 4: Creating tunnel config..."
+mkdir -p $HOME/.cloudflared
+cat > $HOME/.cloudflared/earlcoin-dev.yml << YMLEOF
+tunnel: earlcoin-dev
+credentials-file: $HOME/.cloudflared/earlcoin-dev.json
+
+ingress:
+  - hostname: dev.earlco.in
+    service: http://localhost:5173
+  - service: http_status:404
+YMLEOF
+
+echo ""
+echo "=== Setup Complete ==="
+echo ""
+echo "To run the tunnel:"
+echo "  cloudflared tunnel run earlcoin-dev"
+echo ""
+echo "Dev URL: https://dev.earlco.in"
