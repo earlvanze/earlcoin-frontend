@@ -22,11 +22,15 @@ const itemVariants = {
 
 // Property image URL helper - uses property_id or address-based URL
 const getPropertyImage = (deal) => {
-    // Prioritize image_url from database (Compass Yield provides this)
-    if (deal.image_url && deal.image_url.startsWith('http')) {
+    // Use image_url from Compass Yield if it exists and is not blocked
+    if (deal.image_url && deal.image_url.includes('lofty.ai')) {
         return deal.image_url;
     }
-    // Fallback to Unsplash generic house image
+    // Construct URL from property_id (format: 01FNSMTASFCP7DTAJENQ0HMAME)
+    if (deal.property_id) {
+        return `https://images.lofty.ai/images/${deal.property_id}/002.webp`;
+    }
+    // Fallback to generic house image
     return 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=200&q=80';
 };
 
