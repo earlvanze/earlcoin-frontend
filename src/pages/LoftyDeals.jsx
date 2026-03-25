@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import PageTitle from '@/components/PageTitle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { TrendingUp, DollarSign, Bot, FilePlus, Loader2, AlertTriangle } from 'lucide-react';
+import { TrendingUp, DollarSign, Bot, FilePlus, Loader2, AlertTriangle, ExternalLink } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
 
@@ -19,23 +20,73 @@ const itemVariants = {
 };
 
 const DealCard = ({ deal, type }) => {
+    const navigate = useNavigate();
     const { toast } = useToast();
 
     const handleCreateProposal = () => {
+        // Navigate to create proposal with deal data as query params
+        const params = new URLSearchParams({
+            type: type,
+            property_id: deal.property_id || '',
+            address: deal.address || '',
+            city: deal.city || '',
+            state: deal.state || '',
+            token_price: deal.token_price || '',
+            recommendation: deal.recommendation || '',
+            thesis: deal.thesis_summary || '',
+        });
+
+        if (type === 'equity') {
+            params.set('equity_potential', deal.equityPotential || '');
+            params.set('nav_upside', deal.navUpside || '');
+            params.set('discount_to_nav', deal.discount_to_nav || '');
+            params.set('market_cap', deal.market_cap || '');
+        } else {
+            params.set('coc', deal.coc || '');
+            params.set('monthly_rent', deal.monthlyRent || '');
+            params.set('net_yield', deal.net_yield || '');
+        }
+
+        params.set('shares', deal.sharesToBuy || '');
+        
+        navigate(`/proposals/new?${params.toString()}`);
+        
         toast({
-            title: "Proposal Drafted!",
-            description: `A new proposal to buy ${deal.sharesToBuy} shares of ${deal.address} is ready for review.`,
+            title: "Creating Proposal",
+            description: `Drafting proposal for ${deal.address}`,
         });
     };
+
+    const loftyUrl = deal.property_id ? `https://www.lofty.ai/property/${deal.property_id}` : null;
 
     return (
         <motion.div variants={itemVariants}>
             <Card className="overflow-hidden transition-all duration-300 hover:shadow-primary/20 hover:shadow-lg">
                 <CardHeader className="p-0">
-                    <img src={deal.imageUrl} alt={`Property at ${deal.address}`} className="w-full h-48 object-cover" />
+                    <img 
+                        src={deal.imageUrl} 
+                        alt={`Property at ${deal.address}`} 
+                        className="w-full h-48 object-cover"
+                        onError={(e) => {
+                            e.target.src = 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&q=80';
+                        }}
+                    />
                     <div className="p-6">
-                        <CardTitle>{deal.address}</CardTitle>
-                        <CardDescription className={`mt-2 font-bold ${deal.recommendation.includes('High') || deal.recommendation.includes('Strong') ? 'text-green-400' : 'text-yellow-400'}`}>
+                        <div className="flex justify-between items-start">
+                            <CardTitle className="flex-1">{deal.address}</CardTitle>
+                            {loftyUrl && (
+                                <a 
+                                    href={loftyUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-muted-foreground hover:text-primary transition-colors"
+                                >
+                                    <ExternalLink className="h-4 w-4" />
+                                </a>
+                            )}
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-1">{deal.city}, {deal.state}</p>
+                        <CardDescription className={`mt-2 font-bold ${deal.recommendation?.includes('High') || deal.recommendation?.includes('Strong') ? 'text-green-400' : 'text-yellow-400'}`}>
                             {deal.recommendation}
                         </CardDescription>
                     </div>
@@ -47,15 +98,19 @@ const DealCard = ({ deal, type }) => {
                                 <TrendingUp className="h-5 w-5 text-primary" />
                                 <div>
                                     <p className="text-sm text-muted-foreground">Equity Potential</p>
-                                    <p className="font-bold text-lg">${deal.equityPotential.toLocaleString()}</p>
+                                    <p className="font-bold text-lg">${deal.equityPotential?.toLocaleString() || '—'}</p>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
                                 <DollarSign className="h-5 w-5 text-primary" />
                                 <div>
                                     <p className="text-sm text-muted-foreground">If NAV Converges</p>
-                                    <p className="font-bold text-lg">{deal.navUpside > 0 ? "+" : ""}${deal.navUpside.toLocaleString()}</p>
+                                    <p className="font-bold text-lg">{deal.navUpside > 0 ? "+" : ""}${deal.navUpside?.toLocaleString() || '—'}</p>
                                 </div>
+                            </div>
+                            <div className="col-span-2">
+                                <p className="text-sm text-muted-foreground">Discount to NAV</p>
+                                <p className="font-bold">{deal.discount_to_nav?.toFixed(1) || '—'}%</p>
                             </div>
                         </>
                     ) : (
@@ -64,23 +119,35 @@ const DealCard = ({ deal, type }) => {
                                 <TrendingUp className="h-5 w-5 text-primary" />
                                 <div>
                                     <p className="text-sm text-muted-foreground">Cash on Cash</p>
-                                    <p className="font-bold text-lg">{deal.coc}%</p>
+                                    <p className="font-bold text-lg">{deal.coc?.toFixed(1) || '—'}%</p>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
                                 <DollarSign className="h-5 w-5 text-primary" />
                                 <div>
                                     <p className="text-sm text-muted-foreground">Monthly Rent</p>
-                                    <p className="font-bold text-lg">${deal.monthlyRent.toLocaleString()}</p>
+                                    <p className="font-bold text-lg">${deal.monthlyRent?.toLocaleString() || '—'}</p>
                                 </div>
+                            </div>
+                            <div className="col-span-2">
+                                <p className="text-sm text-muted-foreground">Net Yield</p>
+                                <p className="font-bold">{deal.net_yield?.toFixed(1) || '—'}%</p>
                             </div>
                         </>
                     )}
                 </CardContent>
+                {deal.thesis_summary && (
+                    <CardContent className="px-6 pt-0">
+                        <p className="text-sm text-muted-foreground line-clamp-2">{deal.thesis_summary}</p>
+                    </CardContent>
+                )}
                 <CardFooter className="bg-secondary/30 p-4 flex justify-between items-center">
                     <div>
                         <p className="text-sm text-muted-foreground">Recommended</p>
                         <p className="font-bold">{deal.sharesToBuy} Shares</p>
+                        <p className="text-xs text-muted-foreground">
+                            ~${((deal.sharesToBuy || 0) * (deal.token_price || 50)).toLocaleString()}
+                        </p>
                     </div>
                     <Button onClick={handleCreateProposal}>
                         <FilePlus className="mr-2 h-4 w-4" /> Create Proposal
@@ -164,38 +231,65 @@ const LoftyDeals = () => {
                 <div className="text-center space-y-4">
                     <AlertTriangle className="h-8 w-8 text-red-400 mx-auto" />
                     <p className="text-red-400">Error: {error}</p>
+                    <Button onClick={() => window.location.reload()}>Retry</Button>
                 </div>
             </div>
         );
     }
 
+    const hasDeals = equityDeals.length > 0 || cashflowDeals.length > 0;
+
     return (
         <motion.div initial="hidden" animate="visible" variants={containerVariants}>
           <PageTitle 
             title="Lofty.ai Investment Deals" 
-            description="Automated investment opportunities identified by our DAO's algorithms." 
+            description="Investment opportunities analyzed by Compass Yield. Click 'Create Proposal' to draft a DAO proposal." 
             icon={<Bot className="h-8 w-8 text-primary" />}
           />
           
-          <Tabs defaultValue="equity">
-            <motion.div variants={itemVariants}>
-                <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto mb-8">
-                    <TabsTrigger value="equity"><TrendingUp className="mr-2 h-4 w-4" /> Equity Plays ({equityDeals.length})</TabsTrigger>
-                    <TabsTrigger value="cashflow"><DollarSign className="mr-2 h-4 w-4" /> Cashflow Plays ({cashflowDeals.length})</TabsTrigger>
-                </TabsList>
-            </motion.div>
+          {!hasDeals ? (
+            <Card className="p-8 text-center">
+              <Bot className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-medium mb-2">No Deals Available</h3>
+              <p className="text-muted-foreground">
+                Compass Yield analysis is pending. Check back later for investment opportunities.
+              </p>
+            </Card>
+          ) : (
+            <Tabs defaultValue="equity">
+              <motion.div variants={itemVariants}>
+                  <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto mb-8">
+                      <TabsTrigger value="equity"><TrendingUp className="mr-2 h-4 w-4" /> Equity Plays ({equityDeals.length})</TabsTrigger>
+                      <TabsTrigger value="cashflow"><DollarSign className="mr-2 h-4 w-4" /> Cashflow Plays ({cashflowDeals.length})</TabsTrigger>
+                  </TabsList>
+              </motion.div>
 
-            <TabsContent value="equity">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {equityDeals.map(deal => <DealCard key={deal.id} deal={deal} type="equity" />)}
-                </div>
-            </TabsContent>
-            <TabsContent value="cashflow">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {cashflowDeals.map(deal => <DealCard key={deal.id} deal={deal} type="cashflow" />)}
-                </div>
-            </TabsContent>
-          </Tabs>
+              <TabsContent value="equity">
+                  {equityDeals.length === 0 ? (
+                      <Card className="p-8 text-center">
+                          <TrendingUp className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                          <p className="text-muted-foreground">No equity plays identified currently.</p>
+                      </Card>
+                  ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          {equityDeals.map(deal => <DealCard key={deal.id} deal={deal} type="equity" />)}
+                      </div>
+                  )}
+              </TabsContent>
+              <TabsContent value="cashflow">
+                  {cashflowDeals.length === 0 ? (
+                      <Card className="p-8 text-center">
+                          <DollarSign className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                          <p className="text-muted-foreground">No cashflow plays identified currently.</p>
+                      </Card>
+                  ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          {cashflowDeals.map(deal => <DealCard key={deal.id} deal={deal} type="cashflow" />)}
+                      </div>
+                  )}
+              </TabsContent>
+            </Tabs>
+          )}
         </motion.div>
     );
 };
