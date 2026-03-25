@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { TrendingUp, DollarSign, Bot, FilePlus, Loader2, AlertTriangle, ExternalLink, ChevronDown, ChevronUp, Target, BarChart3, Sparkles, Percent, Activity } from 'lucide-react';
+import { TrendingUp, DollarSign, Bot, FilePlus, Loader2, AlertTriangle, ExternalLink, ChevronDown, ChevronUp, Target, BarChart3, Sparkles } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
 
@@ -113,7 +113,7 @@ const AlphaCard = ({ deal }) => {
                         </p>
                     </div>
                     
-                    {/* NAV vs market */}
+                    {/* NAV vs Market */}
                     <div className="grid grid-cols-2 gap-4">
                         <div className="bg-secondary/30 rounded-lg p-3">
                             <p className="text-xs text-muted-foreground mb-1">NAV / Token</p>
@@ -184,7 +184,6 @@ const AlphaCard = ({ deal }) => {
 
 const LoftyDeals = () => {
     const [alphaDeals, setAlphaDeals] = useState([]);
-    const [equityDeals, setEquityDeals] = useState([]);
     const [cashflowDeals, setCashflowDeals] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -201,15 +200,14 @@ const LoftyDeals = () => {
                 
                 if (alphaErr) throw alphaErr;
 
-                // Also try to fetch legacy tables (may not exist)
-                const [equityRes, cashflowRes] = await Promise.all([
-                    supabase.from('lofty_equity_picks').select('*').order('last_updated', { ascending: false }),
-                    supabase.from('lofty_cashflow_picks').select('*').order('last_updated', { ascending: false }),
-                ]);
+                // Try to fetch cashflow picks (legacy table, may not exist)
+                const { data: cashflowData } = await supabase
+                    .from('lofty_cashflow_picks')
+                    .select('*')
+                    .order('last_updated', { ascending: false });
 
                 setAlphaDeals(alphaData || []);
-                setEquityDeals(equityRes.data || []);
-                setCashflowDeals(cashflowRes.data || []);
+                setCashflowDeals(cashflowData || []);
             } catch (err) {
                 setError(err.message);
             } finally {
@@ -243,7 +241,7 @@ const LoftyDeals = () => {
         );
     }
 
-    const hasDeals = alphaDeals.length > 0 || equityDeals.length > 0 || cashflowDeals.length > 0;
+    const hasDeals = alphaDeals.length > 0 || cashflowDeals.length > 0;
 
     return (
         <motion.div initial="hidden" animate="visible" variants={containerVariants}>
@@ -262,16 +260,12 @@ const LoftyDeals = () => {
               </p>
             </Card>
           ) : (
-            <Tabs defaultValue="alpha" className="space-y-6">
+            <Tabs defaultValue="equity" className="space-y-6">
               <motion.div variants={itemVariants}>
-                  <TabsList className="grid w-full grid-cols-3 max-w-lg mx-auto mb-8">
-                      <TabsTrigger value="alpha">
-                          <Sparkles className="mr-2 h-4 w-4" /> 
-                          Alpha ({alphaDeals.length})
-                      </TabsTrigger>
+                  <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto mb-8">
                       <TabsTrigger value="equity">
                           <TrendingUp className="mr-2 h-4 w-4" /> 
-                          Equity ({equityDeals.length})
+                          Equity ({alphaDeals.length})
                       </TabsTrigger>
                       <TabsTrigger value="cashflow">
                           <DollarSign className="mr-2 h-4 w-4" /> 
@@ -280,34 +274,15 @@ const LoftyDeals = () => {
                   </TabsList>
               </motion.div>
 
-              <TabsContent value="alpha">
+              <TabsContent value="equity">
                   {alphaDeals.length === 0 ? (
                       <Card className="p-8 text-center">
                           <Target className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                          <p className="text-muted-foreground">No alpha opportunities identified currently.</p>
+                          <p className="text-muted-foreground">No equity opportunities identified currently.</p>
                       </Card>
                   ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                           {alphaDeals.map(deal => <AlphaCard key={deal.property_id || deal.id} deal={deal} />)}
-                      </div>
-                  )}
-              </TabsContent>
-              
-              <TabsContent value="equity">
-                  {equityDeals.length === 0 ? (
-                      <Card className="p-8 text-center">
-                          <TrendingUp className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                          <p className="text-muted-foreground">No equity plays identified currently.</p>
-                      </Card>
-                  ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                          {equityDeals.map(deal => (
-                              <Card key={deal.id} className="p-6">
-                                  <h3 className="font-bold">{deal.address}</h3>
-                                  <p className="text-sm text-muted-foreground">{deal.city}, {deal.state}</p>
-                                  <p className="mt-2">Discount: {deal.discount_to_nav?.toFixed(1)}%</p>
-                              </Card>
-                          ))}
                       </div>
                   )}
               </TabsContent>
