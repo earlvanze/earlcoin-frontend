@@ -81,6 +81,19 @@ import React from 'react';
                     <Gem className="mr-2 h-4 w-4" />
                     <span>Membership</span>
                   </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    {isConnected && accountAddress ? (
+                      <div className="flex items-center cursor-default">
+                        <Wallet className="mr-2 h-4 w-4" />
+                        <span className="font-mono text-xs">{accountAddress.slice(0, 4)}...{accountAddress.slice(-4)}</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center cursor-pointer" onClick={handleConnect}>
+                        <Wallet className="mr-2 h-4 w-4" />
+                        <span>Connect Wallet</span>
+                      </div>
+                    )}
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={signOut}>
                     <LogOut className="mr-2 h-4 w-4" />
