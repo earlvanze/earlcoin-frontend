@@ -5,7 +5,8 @@ import PageTitle from '@/components/PageTitle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { TrendingUp, DollarSign, Bot, FilePlus, Loader2, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { TrendingUp, DollarSign, Bot, FilePlus, Loader2, AlertTriangle, ExternalLink, ChevronDown, ChevronUp, Target, BarChart3, Sparkles } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
 
@@ -19,35 +20,27 @@ const itemVariants = {
   visible: { y: 0, opacity: 1, transition: { type: 'spring' } },
 };
 
-const DealCard = ({ deal, type }) => {
+const AlphaCard = ({ deal }) => {
     const navigate = useNavigate();
     const { toast } = useToast();
-
+    const [isDraftOpen, setIsDraftOpen] = useState(false);
+    
+    const alphaPercent = deal.nav_per_token && deal.market_price 
+        ? ((deal.nav_per_token - deal.market_price) / deal.market_price * 100).toFixed(1)
+        : 0;
+    
     const handleCreateProposal = () => {
-        // Navigate to create proposal with deal data as query params
         const params = new URLSearchParams({
-            type: type,
+            type: 'alpha',
             property_id: deal.property_id || '',
             address: deal.address || '',
             city: deal.city || '',
             state: deal.state || '',
-            token_price: deal.token_price || '',
-            recommendation: deal.recommendation || '',
-            thesis: deal.thesis_summary || '',
+            token_price: deal.market_price || '',
+            nav_per_token: deal.nav_per_token || '',
+            alpha_percent: alphaPercent,
+            proposal_draft: deal.proposal_draft || '',
         });
-
-        if (type === 'equity') {
-            params.set('equity_potential', deal.equityPotential || '');
-            params.set('nav_upside', deal.navUpside || '');
-            params.set('discount_to_nav', deal.discount_to_nav || '');
-            params.set('market_cap', deal.market_cap || '');
-        } else {
-            params.set('coc', deal.coc || '');
-            params.set('monthly_rent', deal.monthlyRent || '');
-            params.set('net_yield', deal.net_yield || '');
-        }
-
-        params.set('shares', deal.sharesToBuy || '');
         
         navigate(`/proposals/new?${params.toString()}`);
         
@@ -58,13 +51,20 @@ const DealCard = ({ deal, type }) => {
     };
 
     const loftyUrl = deal.property_id ? `https://www.lofty.ai/property/${deal.property_id}` : null;
+    
+    const getAlphaColor = (alpha) => {
+        if (alpha >= 200) return 'text-green-400';
+        if (alpha >= 100) return 'text-emerald-400';
+        if (alpha >= 50) return 'text-yellow-400';
+        return 'text-orange-400';
+    };
 
     return (
         <motion.div variants={itemVariants}>
             <Card className="overflow-hidden transition-all duration-300 hover:shadow-primary/20 hover:shadow-lg">
                 <CardHeader className="p-0">
                     <img 
-                        src={deal.imageUrl} 
+                        src={deal.image_url || `https://images.lofty.ai/images/${deal.property_id}/thumb-min.webp`} 
                         alt={`Property at ${deal.address}`} 
                         className="w-full h-48 object-cover"
                         onError={(e) => {
@@ -73,7 +73,19 @@ const DealCard = ({ deal, type }) => {
                     />
                     <div className="p-6">
                         <div className="flex justify-between items-start">
-                            <CardTitle className="flex-1">{deal.address}</CardTitle>
+                            <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                    {deal.proposal_rank && (
+                                        <span className="bg-primary/20 text-primary text-xs font-bold px-2 py-1 rounded">
+                                            #{deal.proposal_rank}
+                                        </span>
+                                    )}
+                                    {deal.featured && (
+                                        <Sparkles className="h-4 w-4 text-yellow-400" />
+                                    )}
+                                </div>
+                                <CardTitle className="flex-1">{deal.address}</CardTitle>
+                            </div>
                             {loftyUrl && (
                                 <a 
                                     href={loftyUrl} 
@@ -86,79 +98,92 @@ const DealCard = ({ deal, type }) => {
                             )}
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">{deal.city}, {deal.state}</p>
-                        <CardDescription className={`mt-2 font-bold ${deal.recommendation?.includes('High') || deal.recommendation?.includes('Strong') ? 'text-green-400' : 'text-yellow-400'}`}>
-                            {deal.recommendation}
-                        </CardDescription>
                     </div>
                 </CardHeader>
-                <CardContent className="grid grid-cols-2 gap-4 px-6">
-                    {type === 'equity' ? (
-                        <>
-                            <div className="flex items-center gap-2">
-                                <TrendingUp className="h-5 w-5 text-primary" />
-                                <div>
-                                    <p className="text-sm text-muted-foreground">Equity Potential</p>
-                                    <p className="font-bold text-lg">${deal.equityPotential?.toLocaleString() || '—'}</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <DollarSign className="h-5 w-5 text-primary" />
-                                <div>
-                                    <p className="text-sm text-muted-foreground">If NAV Converges</p>
-                                    <p className="font-bold text-lg">{deal.navUpside > 0 ? "+" : ""}${deal.navUpside?.toLocaleString() || '—'}</p>
-                                </div>
-                            </div>
-                            <div className="col-span-2">
-                                <p className="text-sm text-muted-foreground">Discount to NAV</p>
-                                <p className="font-bold">{deal.discount_to_nav?.toFixed(1) || '—'}%</p>
-                            </div>
-                        </>
-                    ) : (
-                         <>
-                            <div className="flex items-center gap-2">
-                                <TrendingUp className="h-5 w-5 text-primary" />
-                                <div>
-                                    <p className="text-sm text-muted-foreground">Cash on Cash</p>
-                                    <p className="font-bold text-lg">{deal.coc?.toFixed(1) || '—'}%</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <DollarSign className="h-5 w-5 text-primary" />
-                                <div>
-                                    <p className="text-sm text-muted-foreground">Monthly Rent</p>
-                                    <p className="font-bold text-lg">${deal.monthlyRent?.toLocaleString() || '—'}</p>
-                                </div>
-                            </div>
-                            <div className="col-span-2">
-                                <p className="text-sm text-muted-foreground">Net Yield</p>
-                                <p className="font-bold">{deal.net_yield?.toFixed(1) || '—'}%</p>
-                            </div>
-                        </>
-                    )}
-                </CardContent>
-                {deal.thesis_summary && (
-                    <CardContent className="px-6 pt-0">
-                        <p className="text-sm text-muted-foreground line-clamp-2">{deal.thesis_summary}</p>
-                    </CardContent>
-                )}
-                <CardFooter className="bg-secondary/30 p-4 flex justify-between items-center">
-                    <div>
-                        <p className="text-sm text-muted-foreground">Recommended</p>
-                        <p className="font-bold">{deal.sharesToBuy} Shares</p>
-                        <p className="text-xs text-muted-foreground">
-                            ~${((deal.sharesToBuy || 0) * (deal.token_price || 50)).toLocaleString()}
+                
+                <CardContent className="px-6 space-y-4">
+                    {/* Alpha Badge */}
+                    <div className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 rounded-lg p-4 text-center">
+                        <div className="flex items-center justify-center gap-2 mb-1">
+                            <Target className="h-5 w-5 text-green-400" />
+                            <span className="text-sm text-muted-foreground">Alpha Potential</span>
+                        </div>
+                        <p className={`text-3xl font-bold ${getAlphaColor(parseFloat(alphaPercent))}`}>
+                            +{alphaPercent}%
                         </p>
                     </div>
-                    <Button onClick={handleCreateProposal}>
+                    
+                    {/* NAV vs Market */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-secondary/30 rounded-lg p-3">
+                            <p className="text-xs text-muted-foreground mb-1">NAV / Token</p>
+                            <p className="text-xl font-bold text-green-400">${deal.nav_per_token?.toFixed(2) || '—'}</p>
+                            <p className="text-xs text-muted-foreground">Intrinsic value</p>
+                        </div>
+                        <div className="bg-secondary/30 rounded-lg p-3">
+                            <p className="text-xs text-muted-foreground mb-1">Market Price</p>
+                            <p className="text-xl font-bold">${deal.market_price?.toFixed(2) || '—'}</p>
+                            <p className="text-xs text-muted-foreground">Current LP price</p>
+                        </div>
+                    </div>
+                    
+                    {/* Additional metrics */}
+                    {deal.cap_rate && (
+                        <div className="flex items-center gap-4 text-sm">
+                            <div className="flex items-center gap-1">
+                                <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                                <span className="text-muted-foreground">Cap Rate:</span>
+                                <span className="font-medium">{(deal.cap_rate * 100).toFixed(1)}%</span>
+                            </div>
+                            {deal.coc && (
+                                <div className="flex items-center gap-1">
+                                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                                    <span className="text-muted-foreground">CoC:</span>
+                                    <span className="font-medium">{(deal.coc * 100).toFixed(1)}%</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    
+                    {/* Proposal Draft Expandable */}
+                    {deal.proposal_draft && (
+                        <Collapsible open={isDraftOpen} onOpenChange={setIsDraftOpen}>
+                            <CollapsibleTrigger asChild>
+                                <Button variant="ghost" className="w-full flex items-center justify-between">
+                                    <span className="flex items-center gap-2">
+                                        <FilePlus className="h-4 w-4" />
+                                        Investment Thesis
+                                    </span>
+                                    {isDraftOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                </Button>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                                <div className="mt-2 p-4 bg-secondary/20 rounded-lg text-sm prose prose-invert prose-sm max-w-none">
+                                    <pre className="whitespace-pre-wrap font-sans">{deal.proposal_draft}</pre>
+                                </div>
+                            </CollapsibleContent>
+                        </Collapsible>
+                    )}
+                </CardContent>
+                
+                <CardFooter className="bg-secondary/30 p-4 flex justify-between items-center">
+                    <div>
+                        <p className="text-sm text-muted-foreground">Upside</p>
+                        <p className="font-bold text-green-400">
+                            +${((deal.nav_per_token || 0) - (deal.market_price || 0)).toFixed(2)}/token
+                        </p>
+                    </div>
+                    <Button onClick={handleCreateProposal} className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700">
                         <FilePlus className="mr-2 h-4 w-4" /> Create Proposal
                     </Button>
                 </CardFooter>
             </Card>
         </motion.div>
-    )
-}
+    );
+};
 
 const LoftyDeals = () => {
+    const [alphaDeals, setAlphaDeals] = useState([]);
     const [equityDeals, setEquityDeals] = useState([]);
     const [cashflowDeals, setCashflowDeals] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -167,43 +192,24 @@ const LoftyDeals = () => {
     useEffect(() => {
         const fetchDeals = async () => {
             try {
-                const [{ data: equityRaw, error: eqErr }, { data: cashflowRaw, error: cfErr }] = await Promise.all([
+                // Fetch alpha opportunities (featured)
+                const { data: alphaData, error: alphaErr } = await supabase
+                    .from('lofty_alpha_opportunities')
+                    .select('*')
+                    .eq('featured', true)
+                    .order('proposal_rank', { ascending: true });
+                
+                if (alphaErr) throw alphaErr;
+                
+                // Also try to fetch legacy tables (may not exist)
+                const [equityRes, cashflowRes] = await Promise.all([
                     supabase.from('lofty_equity_picks').select('*').order('last_updated', { ascending: false }),
                     supabase.from('lofty_cashflow_picks').select('*').order('last_updated', { ascending: false }),
                 ]);
 
-                if (eqErr) throw eqErr;
-                if (cfErr) throw cfErr;
-
-                const equity = (equityRaw || []).map(d => ({
-                    ...d,
-                    equityPotential: d.discount_to_nav && d.market_cap
-                        ? Math.round(Math.abs((d.discount_to_nav / 100) * d.market_cap))
-                        : 0,
-                    navUpside: d.total_investment && d.market_cap
-                        ? Math.round(d.total_investment - d.market_cap)
-                        : 0,
-                    discountToNav: d.discount_to_nav || 0,
-                    listingPrice: d.market_cap || 0,
-                    imageUrl: d.cover_image_url || `https://images.lofty.ai/images/${d.property_id}/thumb-min.webp`,
-                    sharesToBuy: d.total_tokens ? Math.round(d.total_tokens * 0.01) : 100,
-                    deal_type: 'equity',
-                }));
-
-                const cashflow = (cashflowRaw || []).map(d => ({
-                    ...d,
-                    coc: d.cash_on_cash || 0,
-                    monthlyRent: d.monthly_rent || 0,
-                    netYield: d.net_yield || 0,
-                    grossYield: d.gross_yield || 0,
-                    cashOnCash: d.cash_on_cash || 0,
-                    imageUrl: d.cover_image_url || `https://images.lofty.ai/images/${d.property_id}/thumb-min.webp`,
-                    sharesToBuy: d.total_investment ? Math.round(d.total_investment * 0.01 / (d.token_price || 1)) : 100,
-                    deal_type: 'cashflow',
-                }));
-
-                setEquityDeals(equity);
-                setCashflowDeals(cashflow);
+                setAlphaDeals(alphaData || []);
+                setEquityDeals(equityRes.data || []);
+                setCashflowDeals(cashflowRes.data || []);
             } catch (err) {
                 setError(err.message);
             } finally {
@@ -237,13 +243,13 @@ const LoftyDeals = () => {
         );
     }
 
-    const hasDeals = equityDeals.length > 0 || cashflowDeals.length > 0;
+    const hasDeals = alphaDeals.length > 0 || equityDeals.length > 0 || cashflowDeals.length > 0;
 
     return (
         <motion.div initial="hidden" animate="visible" variants={containerVariants}>
           <PageTitle 
             title="Lofty.ai Investment Deals" 
-            description="Investment opportunities analyzed by Compass Yield. Click 'Create Proposal' to draft a DAO proposal." 
+            description="Alpha opportunities analyzed by Compass Yield. NAV vs market price analysis with investment thesis drafts." 
             icon={<Bot className="h-8 w-8 text-primary" />}
           />
           
@@ -256,14 +262,37 @@ const LoftyDeals = () => {
               </p>
             </Card>
           ) : (
-            <Tabs defaultValue="equity">
+            <Tabs defaultValue="alpha" className="space-y-6">
               <motion.div variants={itemVariants}>
-                  <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto mb-8">
-                      <TabsTrigger value="equity"><TrendingUp className="mr-2 h-4 w-4" /> Equity Plays ({equityDeals.length})</TabsTrigger>
-                      <TabsTrigger value="cashflow"><DollarSign className="mr-2 h-4 w-4" /> Cashflow Plays ({cashflowDeals.length})</TabsTrigger>
+                  <TabsList className="grid w-full grid-cols-3 max-w-lg mx-auto mb-8">
+                      <TabsTrigger value="alpha">
+                          <Sparkles className="mr-2 h-4 w-4" /> 
+                          Alpha ({alphaDeals.length})
+                      </TabsTrigger>
+                      <TabsTrigger value="equity">
+                          <TrendingUp className="mr-2 h-4 w-4" /> 
+                          Equity ({equityDeals.length})
+                      </TabsTrigger>
+                      <TabsTrigger value="cashflow">
+                          <DollarSign className="mr-2 h-4 w-4" /> 
+                          Cashflow ({cashflowDeals.length})
+                      </TabsTrigger>
                   </TabsList>
               </motion.div>
 
+              <TabsContent value="alpha">
+                  {alphaDeals.length === 0 ? (
+                      <Card className="p-8 text-center">
+                          <Target className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                          <p className="text-muted-foreground">No alpha opportunities identified currently.</p>
+                      </Card>
+                  ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          {alphaDeals.map(deal => <AlphaCard key={deal.property_id || deal.id} deal={deal} />)}
+                      </div>
+                  )}
+              </TabsContent>
+              
               <TabsContent value="equity">
                   {equityDeals.length === 0 ? (
                       <Card className="p-8 text-center">
@@ -272,10 +301,17 @@ const LoftyDeals = () => {
                       </Card>
                   ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                          {equityDeals.map(deal => <DealCard key={deal.id} deal={deal} type="equity" />)}
+                          {equityDeals.map(deal => (
+                              <Card key={deal.id} className="p-6">
+                                  <h3 className="font-bold">{deal.address}</h3>
+                                  <p className="text-sm text-muted-foreground">{deal.city}, {deal.state}</p>
+                                  <p className="mt-2">Discount: {deal.discount_to_nav?.toFixed(1)}%</p>
+                              </Card>
+                          ))}
                       </div>
                   )}
               </TabsContent>
+              
               <TabsContent value="cashflow">
                   {cashflowDeals.length === 0 ? (
                       <Card className="p-8 text-center">
@@ -284,7 +320,13 @@ const LoftyDeals = () => {
                       </Card>
                   ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                          {cashflowDeals.map(deal => <DealCard key={deal.id} deal={deal} type="cashflow" />)}
+                          {cashflowDeals.map(deal => (
+                              <Card key={deal.id} className="p-6">
+                                  <h3 className="font-bold">{deal.address}</h3>
+                                  <p className="text-sm text-muted-foreground">{deal.city}, {deal.state}</p>
+                                  <p className="mt-2">CoC: {(deal.cash_on_cash * 100)?.toFixed(1)}%</p>
+                              </Card>
+                          ))}
                       </div>
                   )}
               </TabsContent>
