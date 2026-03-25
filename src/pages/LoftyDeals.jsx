@@ -286,7 +286,7 @@ const LoftyDeals = () => {
                 const { data: alphaData, error: alphaErr } = await supabase
                     .from('lofty_alpha_opportunities')
                     .select('*')
-                    .eq('featured', true)
+                    .not('proposal_rank', 'is', null)
                     .order('proposal_rank', { ascending: true });
                 
                 if (alphaErr) throw alphaErr;
