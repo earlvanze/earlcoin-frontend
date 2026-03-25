@@ -275,6 +275,83 @@ import { getFmvDiscount } from '@/data/propertyFmv';
             </Card>
           </motion.div>
 
+
+          {/* Solar System */}
+          <motion.div variants={itemVariants} className="mb-8">
+            <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2"><Sun className="text-yellow-400" /> Other Assets</h2>
+            <Card className="border-yellow-500/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Sun className="h-5 w-5 text-yellow-400" />
+                  {staticSolarAsset.name}
+                  {SOLAR_ASA && solarAsset && (
+                    <span className="ml-2 text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded">ON-CHAIN</span>
+                  )}
+                </CardTitle>
+                <CardDescription>{staticSolarAsset.note}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">System Cost</p>
+                    <p className="text-lg font-bold">{formatUSD(solarCost)}</p>
+                    {solarAsset && (
+                      <p className="text-xs text-muted-foreground">
+                        {solarAsset.totalShares.toLocaleString()} SOLAR @ $50
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Lock className="h-3 w-3" /> Loan Balance (Escrow)
+                    </p>
+                    <p className="text-lg font-bold text-red-400">-{formatUSD(solarLoanBalance)}</p>
+                    {solarAsset && (
+                      <p className="text-xs text-muted-foreground">
+                        {solarAsset.escrowShares.toLocaleString()} shares locked in gov admin
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground">${staticSolarAsset.monthlyPayment}/mo ({staticSolarAsset.paymentType})</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Current Equity (Treasury)</p>
+                    <p className="text-lg font-bold text-green-400">{formatUSD(solarEquity)}</p>
+                    {solarAsset && (
+                      <p className="text-xs text-muted-foreground">
+                        {solarAsset.treasuryShares.toLocaleString()} shares in treasury
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Net Monthly Benefit</p>
+                    <p className="text-lg font-bold text-green-400">${solar.netMonthlySavings}/mo</p>
+                  </div>
+                </div>
+                <div className="border-t border-border/20 pt-4">
+                  <h4 className="text-sm font-semibold text-yellow-400 mb-3 flex items-center gap-2"><Zap className="h-4 w-4" /> Production & Usage</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Annual Production</p>
+                      <p className="text-lg font-bold">{solar.annualKwh.toLocaleString()} kWh</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Annual Value</p>
+                      <p className="text-lg font-bold">{formatUSD(solar.annualValue)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Grid Usage</p>
+                      <p className="text-lg font-bold">{solar.gridUsageMonthly.toLocaleString()} kWh/mo</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Solar Coverage</p>
+                      <p className="text-lg font-bold text-yellow-400">{solar.coveragePercent}%</p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
           {/* Off-chain Real Estate */}
           <motion.div variants={itemVariants} className="mb-8">
             <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2"><Home /> Off-Chain Real Estate</h2>
@@ -409,82 +486,6 @@ import { getFmvDiscount } from '@/data/propertyFmv';
                 </CardContent>
               </Card>
             ))}
-          </motion.div>
-
-          {/* Solar System */}
-          <motion.div variants={itemVariants} className="mb-8">
-            <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2"><Sun className="text-yellow-400" /> Personal Assets</h2>
-            <Card className="border-yellow-500/20">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Sun className="h-5 w-5 text-yellow-400" />
-                  {staticSolarAsset.name}
-                  {SOLAR_ASA && solarAsset && (
-                    <span className="ml-2 text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded">ON-CHAIN</span>
-                  )}
-                </CardTitle>
-                <CardDescription>{staticSolarAsset.note}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground">System Cost</p>
-                    <p className="text-lg font-bold">{formatUSD(solarCost)}</p>
-                    {solarAsset && (
-                      <p className="text-xs text-muted-foreground">
-                        {solarAsset.totalShares.toLocaleString()} SOLAR @ $50
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Lock className="h-3 w-3" /> Loan Balance (Escrow)
-                    </p>
-                    <p className="text-lg font-bold text-red-400">-{formatUSD(solarLoanBalance)}</p>
-                    {solarAsset && (
-                      <p className="text-xs text-muted-foreground">
-                        {solarAsset.escrowShares.toLocaleString()} shares locked in gov admin
-                      </p>
-                    )}
-                    <p className="text-xs text-muted-foreground">${staticSolarAsset.monthlyPayment}/mo ({staticSolarAsset.paymentType})</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Current Equity (Treasury)</p>
-                    <p className="text-lg font-bold text-green-400">{formatUSD(solarEquity)}</p>
-                    {solarAsset && (
-                      <p className="text-xs text-muted-foreground">
-                        {solarAsset.treasuryShares.toLocaleString()} shares in treasury
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Net Monthly Benefit</p>
-                    <p className="text-lg font-bold text-green-400">${solar.netMonthlySavings}/mo</p>
-                  </div>
-                </div>
-                <div className="border-t border-border/20 pt-4">
-                  <h4 className="text-sm font-semibold text-yellow-400 mb-3 flex items-center gap-2"><Zap className="h-4 w-4" /> Production & Usage</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Annual Production</p>
-                      <p className="text-lg font-bold">{solar.annualKwh.toLocaleString()} kWh</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Annual Value</p>
-                      <p className="text-lg font-bold">{formatUSD(solar.annualValue)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Grid Usage</p>
-                      <p className="text-lg font-bold">{solar.gridUsageMonthly.toLocaleString()} kWh/mo</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Solar Coverage</p>
-                      <p className="text-lg font-bold text-yellow-400">{solar.coveragePercent}%</p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
           </motion.div>
 
           {/* Crypto */}
