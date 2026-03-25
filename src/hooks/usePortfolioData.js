@@ -1,3 +1,4 @@
+import { getFmvPerToken } from '@/data/propertyFmv';
 import { useState, useEffect } from 'react';
 import { WALLETS, INDEXER_BASE, LOFTY_API, COOLWOOD_ASA, COOLWOOD_TOKEN_PRICE, COOLWOOD_MORTGAGE } from '@/lib/wallets';
 
@@ -18,6 +19,18 @@ async function fetchLoftyProperties() {
   return res.json();
 }
 
+async function fetchAssetMetadata(assetId) {
+  try {
+    const res = await fetch(`${INDEXER_BASE}/v2/assets/${assetId}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const a = data.asset?.params;
+    if (!a) return null;
+    return { name: a.name || a['unit-name'] || String(assetId), unitName: a['unit-name'] || '', decimals: a.decimals ?? 0 };
+  } catch { return null; }
+}
+
+
 function buildPropertyLookup(loftyData) {
   const lookup = {};
   for (const item of loftyData) {
@@ -28,11 +41,17 @@ function buildPropertyLookup(loftyData) {
       state: p.state,
       tokenValue: p.tokenValue,
       capRate: p.cap_rate,
+      coc: p.coc || 0,  // Cash-on-cash return (actual rental yield)
       monthlyRent: p.monthly_rent,
       noi: p.netOperatingIncome,
       lpPrice: lp.price || p.tokenValue,
-      apy7d: lp.apy7d?.base || 0,
-      apy30d: lp.apy30d?.base || 0,
+      // Keep LP APY as separate field (for reference only)
+      lpApy7d: lp.apy7d?.base || 0,
+      lpApy30d: lp.apy30d?.base || 0,
+      totalInvestment: p.totalInvestment,
+      totalTokens: p.tokens,
+      totalLoans: item.totalLoans || 0,
+      listingStatus: p.listingStatus,
     };
     lookup[p.assetId] = entry;
     if (p.newAssetId) lookup[p.newAssetId] = entry;
@@ -77,6 +96,7 @@ export function usePortfolioData() {
             if (existing) {
               existing.tokens += asset.amount;
               existing.value = existing.tokens * existing.lpPrice;
+              existing.fmv = existing.tokens * (getFmvPerToken(existing.address, existing.totalTokens) || existing.tokenValue);
             } else {
               properties.push({
                 address: prop.address,
@@ -84,16 +104,57 @@ export function usePortfolioData() {
                 tokens: asset.amount,
                 lpPrice: prop.lpPrice,
                 tokenValue: prop.tokenValue,
+                totalInvestment: prop.totalInvestment,
+                totalTokens: prop.totalTokens,
+                totalLoans: prop.totalLoans,
                 value: asset.amount * prop.lpPrice,
+                fmv: asset.amount * (getFmvPerToken(prop.address, prop.totalTokens) || prop.tokenValue),
                 capRate: prop.capRate,
-                apy7d: prop.apy7d,
+                coc: prop.coc,  // Cash-on-cash (actual yield)
+                lpApy7d: prop.lpApy7d,  // LP trading APY (reference only)
                 monthlyRent: prop.monthlyRent,
+                listingStatus: prop.listingStatus,
                 wallet: asset.wallet,
                 assetId: asset.assetId,
               });
             }
           }
         }
+
+        // Collect non-Lofty, non-Coolwood assets as crypto
+        const knownAssetIds = new Set(Object.keys(lookup).map(Number));
+        knownAssetIds.add(COOLWOOD_ASA);
+        const unknownAssets = allAssets.filter(a => !knownAssetIds.has(a.assetId));
+
+        // Deduplicate by assetId (sum across wallets)
+        const cryptoMap = {};
+        for (const a of unknownAssets) {
+          if (!cryptoMap[a.assetId]) cryptoMap[a.assetId] = { assetId: a.assetId, amount: 0 };
+          cryptoMap[a.assetId].amount += a.amount;
+        }
+
+        // Fetch metadata for each unknown asset
+        const cryptoRaw = await Promise.all(
+          Object.values(cryptoMap).map(async ({ assetId, amount }) => {
+            const meta = await fetchAssetMetadata(assetId);
+            const decimals = meta?.decimals ?? 0;
+            const unitName = meta?.unitName || meta?.name || String(assetId);
+            const realAmount = amount / Math.pow(10, decimals);
+            const usdValue = assetId === 31566704 ? realAmount : null;
+            return {
+              assetId,
+              name: meta?.name || unitName,
+              symbol: unitName,
+              amount: realAmount,
+              decimals,
+              usdValue,
+            };
+          })
+        );
+
+        // Filter dust: keep anything with realAmount >= 0.001
+        // LP tokens (BaseLP/QuoteLP) are intentionally kept — they represent staking positions
+        const cryptoAssets = cryptoRaw.filter(a => a.amount >= 0.001);
 
         properties.sort((a, b) => b.value - a.value);
 
@@ -105,11 +166,12 @@ export function usePortfolioData() {
           tokenValue: COOLWOOD_TOKEN_PRICE,
           value: coolwoodTokens * COOLWOOD_TOKEN_PRICE,
           capRate: null,
-          apy7d: null,
+          coc: null,
+          lpApy7d: null,
           monthlyRent: null,
           wallet: 'Treasury',
           assetId: COOLWOOD_ASA,
-          
+          mortgage: COOLWOOD_MORTGAGE,
           isCoolwood: true,
         } : null;
 
@@ -122,13 +184,19 @@ export function usePortfolioData() {
         }
 
         const loftyGross = properties.reduce((s, p) => s + p.value, 0);
+        const totalMortgage = properties.reduce((s, p) => {
+          if (!p.totalTokens || !p.totalLoans) return s;
+          return s + Math.round(p.totalLoans * (p.tokens / p.totalTokens));
+        }, 0) + (coolwood ? coolwood.mortgage : 0);
+        const loftyFmv = properties.reduce((s, p) => s + (p.fmv || p.value), 0);
         const coolwoodGross = coolwood ? coolwood.value : 0;
         const totalGross = loftyGross + coolwoodGross;
+        const totalFmv = loftyFmv + coolwoodGross;
 
-        // Find top APY property
-        const topApy = properties.reduce((best, p) => 
-          (p.apy7d || 0) > (best.apy7d || 0) ? p : best, 
-          { apy7d: 0, address: 'N/A' }
+        // Find top CoC property (actual rental yield, not LP APY)
+        const topCoc = properties.reduce((best, p) => 
+          (p.coc || 0) > (best.coc || 0) ? p : best, 
+          { coc: 0, address: 'N/A' }
         );
 
         if (!cancelled) {
@@ -139,11 +207,14 @@ export function usePortfolioData() {
             loftyGross,
             coolwoodGross,
             totalGross,
+            totalFmv,
+            loftyFmv,
             totalMortgage: coolwood ? COOLWOOD_MORTGAGE : 0,
             propertyCount: properties.length + (coolwood ? 1 : 0),
             stateCount: Object.keys(stateValues).length,
             coolwoodTokens,
-            topApy,
+            topCoc,  // Renamed from topApy
+            cryptoAssets,
           });
           setLastUpdated(new Date());
           setLoading(false);

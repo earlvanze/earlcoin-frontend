@@ -58,7 +58,7 @@ import React from 'react';
         );
       }
 
-      const { totalGross, totalMortgage, stateValues, properties, coolwood, propertyCount, stateCount, topApy } = data;
+      const { totalGross, totalMortgage, stateValues, properties, coolwood, propertyCount, stateCount, topCoc } = data;
       const netEquity = totalGross;
 
       // Add current NAV point
@@ -68,7 +68,7 @@ import React from 'react';
         { title: 'Gross Property Value', value: formatUSD(totalGross), icon: DollarSign, change: `${propertyCount} properties across ${stateCount} states` },
         { title: 'Lofty Properties', value: `${propertyCount}`, icon: MapPin, change: `Across ${stateCount} states` },
         { title: 'Gross Value', value: formatUSD(totalGross), icon: Landmark, change: 'On-chain token value (live)' },
-        { title: 'Top APY (7d)', value: `${topApy.apy7d?.toFixed(1) || '0'}%`, icon: TrendingUp, change: topApy.address?.split(',')[0] || 'N/A' },
+        { title: 'Top Cash Yield', value: `${topCoc.coc?.toFixed(1) || '0'}%`, icon: TrendingUp, change: topCoc.address?.split(',')[0] || 'N/A' },
       ];
 
       // Top 4 holdings for cards
@@ -163,8 +163,7 @@ import React from 'react';
                         <p className="text-sm font-medium">{h.address.split(',').slice(0, 2).join(',')}</p>
                         <p className="text-xs text-muted-foreground">
                           {formatUSD(h.value)} · {h.tokens.toLocaleString()} tokens
-                          
-                          {h.apy7d > 0 && ` · ${h.apy7d.toFixed(1)}% APY`}
+                          {h.coc > 0 && ` · ${h.coc.toFixed(1)}% CoC`}
                         </p>
                       </div>
                     </div>

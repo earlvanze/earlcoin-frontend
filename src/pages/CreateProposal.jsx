@@ -25,7 +25,7 @@ import React, { useState, useRef, useEffect } from 'react';
         color: 'text-blue-400',
         generate: (portfolioData) => {
           const avgCapRate = portfolioData?.properties?.reduce((sum, p) => sum + (p.capRate || 0), 0) / (portfolioData?.properties?.length || 1);
-          const avgApy = portfolioData?.properties?.reduce((sum, p) => sum + (p.apy7d || 0), 0) / (portfolioData?.properties?.length || 1);
+          const avgApy = portfolioData?.properties?.reduce((sum, p) => sum + (p.coc || 0), 0) / (portfolioData?.properties?.length || 1);
           return {
             title: 'Acquire [Property Address]',
             description: `## Summary

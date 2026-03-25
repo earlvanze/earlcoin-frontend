@@ -198,6 +198,14 @@ export default defineConfig({
 	],
 	server: {
 		cors: true,
+		proxy: {
+			'/api/lofty.php': {
+				target: 'https://www.loftyassist.com',
+				rewrite: () => '/api/properties',
+				changeOrigin: true,
+				secure: true,
+			},
+		},
 		headers: {
 			'Cross-Origin-Embedder-Policy': 'credentialless',
 		},

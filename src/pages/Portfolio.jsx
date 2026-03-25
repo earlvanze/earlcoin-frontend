@@ -66,6 +66,45 @@ import React from 'react';
           ],
         },
       },
+,
+      {
+        name: '804 S Quitman St, Denver, CO 80219',
+        aka: 'Denver SFR — Lofty DAO (pre-tokenization)',
+        type: 'DAO Members — Earl Vanze Co (7.495% equity / 3.843% total) + EVCO Holdings (3.180% / 1.630%) = 10.675% equity',
+        propertyValue: 800450,
+        mortgage: 358500,
+        propertyEquity: 441950,
+        ownershipPct: 10.675,
+        ownershipOfTotal: 5.473,
+        memberCapital: 47000,
+        profitLoss: 0,
+        equityShare: 47000,
+        ltv: 44.8,
+        details: 'SFR · Denver, CO · Not yet tokenized on Lofty · Rocket Mortgage $358,500 · Total member capital ~$440,298 · Earl: $47k across 2 entities',
+        coc: 0,
+        monthlyRent: 3500,
+        noi: 34650,
+        totalInvestment: 800450,
+        totalLoans: 358500,
+        tokens: null,
+        tokenValue: null,
+        state: 'CO',
+        loftyStatus: 'Pre-tokenization',
+        capTable: [
+          { name: 'Nathaniel Gipson', capital: 202298.29, ownership: 45.946, ownershipOfTotal: 23.556 },
+          { name: 'Wesley Babcock', capital: 70000, ownership: 15.898, ownershipOfTotal: 8.151 },
+          { name: 'Ian Haber', capital: 50000, ownership: 11.356, ownershipOfTotal: 5.822 },
+          { name: 'Earl Vanze Co', capital: 33000, ownership: 7.495, ownershipOfTotal: 3.843 },
+          { name: 'NARWALL Holdings LLC', capital: 22000, ownership: 4.997, ownershipOfTotal: 2.562 },
+          { name: 'Thomas A. Austin', capital: 20000, ownership: 4.542, ownershipOfTotal: 2.329 },
+          { name: 'EVCO Holdings LLC (Earl)', capital: 14000, ownership: 3.180, ownershipOfTotal: 1.630 },
+          { name: 'Daniel Murrey', capital: 10000, ownership: 2.271, ownershipOfTotal: 1.164 },
+          { name: 'Brandon McArthur', capital: 10000, ownership: 2.271, ownershipOfTotal: 1.164 },
+          { name: 'Kyle McArthur', capital: 9000, ownership: 2.044, ownershipOfTotal: 1.048 },
+          { name: 'Rocket Mortgage (lender)', capital: 358500, ownership: 0, ownershipOfTotal: 41.744, isLender: true },
+        ],
+      },
+
     ];
 
     const solarAsset = {
@@ -87,13 +126,6 @@ import React from 'react';
         netMonthlySavings: 120,
       },
     };
-
-    const cryptoAssets = [
-      { name: 'USDC', symbol: 'USDC', value: '$909.71' },
-      { name: 'goBTC', symbol: 'goBTC', value: '~$3,000' },
-      { name: 'EARLDAO', symbol: 'EARL', value: '146 tokens' },
-      { name: 'ALPHA', symbol: 'ALPHA', value: '3,003 tokens' },
-    ];
 
     const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.05 } } };
     const itemVariants = { hidden: { y: 20, opacity: 0 }, visible: { y: 0, opacity: 1, transition: { type: 'spring' } } };
@@ -124,7 +156,7 @@ import React from 'react';
         );
       }
 
-      const { properties, coolwood, totalGross, totalMortgage, loftyGross } = data;
+      const { properties, coolwood, totalGross, totalMortgage, loftyGross, cryptoAssets = [] } = data;
       const allProperties = coolwood ? [coolwood, ...properties] : properties;
       const llcEquityShare = offChainAssets[0].equityShare;
       const debtShareLuna = Math.round(offChainAssets[0].mortgage * offChainAssets[0].ownershipPct / 100);
@@ -193,9 +225,9 @@ import React from 'react';
                       </div>
                       <div className="flex items-center gap-6 shrink-0">
                         <div className="text-right hidden md:block">
-                          <p className="text-xs text-muted-foreground">APY (7d)</p>
-                          <p className={`text-sm font-medium ${(asset.apy7d || 0) > 10 ? 'text-green-400' : ''}`}>
-                            {asset.apy7d != null ? `${asset.apy7d.toFixed(1)}%` : '—'}
+                          <p className="text-xs text-muted-foreground">Cash Yield</p>
+                          <p className={`text-sm font-medium ${(asset.coc || 0) > 5 ? 'text-green-400' : (asset.coc || 0) === 0 ? 'text-red-400' : ''}`}>
+                            {asset.coc != null ? (asset.coc === 0 ? '0% ⚠' : `${asset.coc.toFixed(1)}%`) : '—'}
                           </p>
                         </div>
                         <div className="text-right hidden md:block">
@@ -235,19 +267,50 @@ import React from 'react';
                       <p className="text-lg font-bold">{formatUSD(asset.propertyValue)}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Mortgage Balance</p>
-                      <p className="text-lg font-bold text-red-400">-{formatUSD(asset.mortgage)}</p>
-                      <p className="text-xs text-muted-foreground">${asset.monthlyPayment.toLocaleString()}/mo</p>
+                      <p className="text-xs text-muted-foreground">Mortgage / LTV</p>
+                      {asset.mortgage > 0
+                        ? <><p className="text-lg font-bold text-red-400">-{formatUSD(asset.mortgage)}</p>
+                            <p className="text-xs text-muted-foreground">{((asset.mortgage/asset.propertyValue)*100).toFixed(1)}% LTV</p></>
+                        : <><p className="text-lg font-bold text-green-400">None</p>
+                            <p className="text-xs text-muted-foreground">0% LTV</p></>
+                      }
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Property Equity</p>
-                      <p className="text-lg font-bold">{formatUSD(asset.propertyEquity)}</p>
+                      <p className="text-xs text-muted-foreground">Member Capital</p>
+                      <p className="text-lg font-bold">{asset.memberCapital != null ? formatUSD(asset.memberCapital) : <span className="text-yellow-400 text-sm">TBD</span>}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Your Share ({asset.ownershipPct}%)</p>
-                      <p className="text-lg font-bold text-green-400">{formatUSD(asset.equityShare)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {asset.ownershipPct != null ? `Your Equity (${asset.ownershipPct}%)` : 'Your Equity'}
+                      </p>
+                      <p className="text-lg font-bold text-green-400">
+                        {asset.equityShare != null ? formatUSD(asset.equityShare) : <span className="text-yellow-400 text-sm">TBD</span>}
+                      </p>
                     </div>
                   </div>
+                  {/* P&L and extra DAO metrics */}
+                  {(asset.profitLoss != null || asset.coc != null || asset.monthlyRent != null) && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 border-t border-border/20 pt-4">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Profit / Loss</p>
+                        <p className={`text-lg font-bold ${asset.profitLoss == null ? 'text-yellow-400' : asset.profitLoss >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {asset.profitLoss != null ? formatUSD(asset.profitLoss) : 'TBD'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">CoC Return</p>
+                        <p className="text-lg font-bold">{asset.coc != null ? `${asset.coc}%` : '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Monthly Rent</p>
+                        <p className="text-lg font-bold">{asset.monthlyRent != null ? `$${asset.monthlyRent.toLocaleString()}` : '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Annual NOI</p>
+                        <p className="text-lg font-bold">{asset.noi != null ? formatUSD(asset.noi) : '—'}</p>
+                      </div>
+                    </div>
+                  )}
 
                   {/* STR Performance */}
                   <div className="border-t border-border/20 pt-4">
@@ -378,17 +441,27 @@ import React from 'react';
             <Card>
               <CardContent className="p-0">
                 <div className="divide-y divide-border/20">
-                  {cryptoAssets.map((asset, index) => (
-                    <div key={index} className="flex items-center justify-between p-4 hover:bg-accent/50 transition-colors">
-                      <div className="flex items-center gap-4">
-                        <div className="bg-secondary p-3 rounded-full">
-                          {asset.symbol === 'goBTC' ? <Bitcoin className="h-5 w-5 text-orange-400" /> : asset.symbol === 'USDC' ? <DollarSign className="h-5 w-5 text-green-400" /> : <Coins className="h-5 w-5 text-purple-400" />}
+                  {cryptoAssets.length === 0 && (
+                    <div className="p-4 text-muted-foreground text-sm">No non-Lofty assets found in wallets.</div>
+                  )}
+                  {cryptoAssets.map((asset, index) => {
+                    const isUSDC = asset.assetId === 31566704;
+                    const isBTC = asset.symbol?.toLowerCase().includes('btc');
+                    const displayValue = isUSDC
+                      ? `$${asset.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                      : `${asset.amount.toLocaleString('en-US', { maximumFractionDigits: 6 })} ${asset.symbol}`;
+                    return (
+                      <div key={index} className="flex items-center justify-between p-4 hover:bg-accent/50 transition-colors">
+                        <div className="flex items-center gap-4">
+                          <div className="bg-secondary p-3 rounded-full">
+                            {isBTC ? <Bitcoin className="h-5 w-5 text-orange-400" /> : isUSDC ? <DollarSign className="h-5 w-5 text-green-400" /> : <Coins className="h-5 w-5 text-purple-400" />}
+                          </div>
+                          <p className="font-bold">{asset.name} ({asset.symbol})</p>
                         </div>
-                        <p className="font-bold">{asset.name} ({asset.symbol})</p>
+                        <p className="font-semibold text-lg">{displayValue}</p>
                       </div>
-                      <p className="font-semibold text-lg">{asset.value}</p>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
