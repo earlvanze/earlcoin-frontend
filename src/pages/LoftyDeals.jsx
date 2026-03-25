@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { TrendingUp, DollarSign, Bot, FilePlus, Loader2, AlertTriangle, ExternalLink, ChevronDown, ChevronUp, Target, BarChart3, Sparkles } from 'lucide-react';
+import { TrendingUp, DollarSign, Bot, FilePlus, Loader2, AlertTriangle, ExternalLink, ChevronDown, ChevronUp, Target, BarChart3, Sparkles, Activity, PieChart, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
 
@@ -182,8 +182,99 @@ const AlphaCard = ({ deal }) => {
     );
 };
 
+const StrategyCard = ({ scenario }) => {
+    const winner = scenario.winner || 'Hybrid LP';
+    const quoteReturn = scenario.quote_return || 0;
+    const baseReturn = scenario.base_return || 0;
+    const hybridReturn = scenario.hybrid_return || 0;
+    
+    const getWinnerColor = (w) => {
+        if (w === 'Quote LP') return 'text-blue-400';
+        if (w === 'Base LP') return 'text-green-400';
+        return 'text-purple-400';
+    };
+    
+    const formatReturn = (val) => {
+        if (val === null || val === undefined) return '—';
+        const formatted = (val * 100).toFixed(1);
+        return val >= 0 ? `+${formatted}%` : `${formatted}%`;
+    };
+    
+    const getReturnColor = (val) => {
+        if (val === null || val === undefined) return 'text-muted-foreground';
+        return val >= 0 ? 'text-green-400' : 'text-red-400';
+    };
+
+    return (
+        <motion.div variants={itemVariants}>
+            <Card className="overflow-hidden transition-all duration-300 hover:shadow-primary/20 hover:shadow-lg">
+                <CardHeader className="pb-2">
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <CardTitle className="text-lg">{scenario.scenario}</CardTitle>
+                            <p className="text-sm text-muted-foreground">{scenario.description || ''}</p>
+                        </div>
+                        <span className={`px-2 py-1 rounded text-xs font-bold ${getWinnerColor(winner)} bg-secondary/50`}>
+                            {winner} wins
+                        </span>
+                    </div>
+                </CardHeader>
+                
+                <CardContent className="space-y-4">
+                    {/* Returns Grid */}
+                    <div className="grid grid-cols-3 gap-2">
+                        <div className={`rounded p-3 ${winner === 'Quote LP' ? 'bg-blue-500/20 ring-1 ring-blue-500/50' : 'bg-secondary/30'}`}>
+                            <div className="flex items-center gap-1 mb-1">
+                                <Activity className="h-3 w-3 text-blue-400" />
+                                <span className="text-xs text-muted-foreground">Quote LP</span>
+                            </div>
+                            <p className={`text-lg font-bold ${getReturnColor(quoteReturn)}`}>
+                                {formatReturn(quoteReturn)}
+                            </p>
+                        </div>
+                        <div className={`rounded p-3 ${winner === 'Base LP' ? 'bg-green-500/20 ring-1 ring-green-500/50' : 'bg-secondary/30'}`}>
+                            <div className="flex items-center gap-1 mb-1">
+                                <TrendingUp className="h-3 w-3 text-green-400" />
+                                <span className="text-xs text-muted-foreground">Base LP</span>
+                            </div>
+                            <p className={`text-lg font-bold ${getReturnColor(baseReturn)}`}>
+                                {formatReturn(baseReturn)}
+                            </p>
+                        </div>
+                        <div className={`rounded p-3 ${winner === 'Hybrid LP' ? 'bg-purple-500/20 ring-1 ring-purple-500/50' : 'bg-secondary/30'}`}>
+                            <div className="flex items-center gap-1 mb-1">
+                                <PieChart className="h-3 w-3 text-purple-400" />
+                                <span className="text-xs text-muted-foreground">Hybrid LP</span>
+                            </div>
+                            <p className={`text-lg font-bold ${getReturnColor(hybridReturn)}`}>
+                                {formatReturn(hybridReturn)}
+                            </p>
+                        </div>
+                    </div>
+                    
+                    {/* Market/Oracle Ratio */}
+                    {scenario.market_oracle_ratio && (
+                        <div className="flex items-center justify-between text-sm bg-secondary/20 rounded p-2">
+                            <span className="text-muted-foreground">Market/Oracle Ratio:</span>
+                            <span className="font-mono font-bold">
+                                {scenario.market_oracle_ratio.toFixed(2)}
+                            </span>
+                        </div>
+                    )}
+                    
+                    {/* Notes */}
+                    {scenario.notes && (
+                        <p className="text-xs text-muted-foreground italic">{scenario.notes}</p>
+                    )}
+                </CardContent>
+            </Card>
+        </motion.div>
+    );
+};
+
 const LoftyDeals = () => {
     const [alphaDeals, setAlphaDeals] = useState([]);
+    const [strategyData, setStrategyData] = useState([]);
     const [cashflowDeals, setCashflowDeals] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -199,6 +290,17 @@ const LoftyDeals = () => {
                     .order('proposal_rank', { ascending: true });
                 
                 if (alphaErr) throw alphaErr;
+
+                // Fetch LP strategy backtest
+                const { data: strategyData, error: strategyErr } = await supabase
+                    .from('lofty_lp_strategy')
+                    .select('*')
+                    .order('scenario', { ascending: true });
+                
+                // Don't throw on strategy error - it's optional
+                if (!strategyErr) {
+                    setStrategyData(strategyData || []);
+                }
 
                 // Try to fetch cashflow picks (legacy table, may not exist)
                 const { data: cashflowData } = await supabase
@@ -241,13 +343,13 @@ const LoftyDeals = () => {
         );
     }
 
-    const hasDeals = alphaDeals.length > 0 || cashflowDeals.length > 0;
+    const hasDeals = alphaDeals.length > 0 || strategyData.length > 0 || cashflowDeals.length > 0;
 
     return (
         <motion.div initial="hidden" animate="visible" variants={containerVariants}>
           <PageTitle 
             title="Lofty.ai Investment Deals" 
-            description="Alpha opportunities analyzed by Compass Yield. NAV vs market price analysis with investment thesis drafts." 
+            description="Alpha opportunities and LP strategy analysis by Compass Yield." 
             icon={<Bot className="h-8 w-8 text-primary" />}
           />
           
@@ -262,10 +364,14 @@ const LoftyDeals = () => {
           ) : (
             <Tabs defaultValue="equity" className="space-y-6">
               <motion.div variants={itemVariants}>
-                  <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto mb-8">
+                  <TabsList className="grid w-full grid-cols-3 max-w-lg mx-auto mb-8">
                       <TabsTrigger value="equity">
                           <TrendingUp className="mr-2 h-4 w-4" /> 
                           Equity ({alphaDeals.length})
+                      </TabsTrigger>
+                      <TabsTrigger value="strategy">
+                          <PieChart className="mr-2 h-4 w-4" /> 
+                          LP Strategy ({strategyData.length})
                       </TabsTrigger>
                       <TabsTrigger value="cashflow">
                           <DollarSign className="mr-2 h-4 w-4" /> 
@@ -284,6 +390,36 @@ const LoftyDeals = () => {
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                           {alphaDeals.map(deal => <AlphaCard key={deal.property_id || deal.id} deal={deal} />)}
                       </div>
+                  )}
+              </TabsContent>
+              
+              <TabsContent value="strategy">
+                  {strategyData.length === 0 ? (
+                      <Card className="p-8 text-center">
+                          <PieChart className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                          <p className="text-muted-foreground">No LP strategy backtest data available.</p>
+                      </Card>
+                  ) : (
+                      <>
+                      <div className="mb-6 p-4 bg-secondary/30 rounded-lg">
+                          <h3 className="font-bold mb-2 flex items-center gap-2">
+                              <PieChart className="h-5 w-5 text-purple-400" />
+                              LP Strategy Recommendations
+                          </h3>
+                          <p className="text-sm text-muted-foreground">
+                              Backtested returns for Quote LP (fees), Base LP (price appreciation), and Hybrid LP strategies.
+                              Winner determined by highest risk-adjusted return.
+                          </p>
+                          <div className="mt-3 flex gap-4 text-xs">
+                              <span className="flex items-center gap-1"><Activity className="h-3 w-3 text-blue-400" /> Quote LP = fee capture</span>
+                              <span className="flex items-center gap-1"><TrendingUp className="h-3 w-3 text-green-400" /> Base LP = price upside</span>
+                              <span className="flex items-center gap-1"><PieChart className="h-3 w-3 text-purple-400" /> Hybrid = balanced</span>
+                          </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          {strategyData.map((s, i) => <StrategyCard key={s.id || i} scenario={s} />)}
+                      </div>
+                      </>
                   )}
               </TabsContent>
               
