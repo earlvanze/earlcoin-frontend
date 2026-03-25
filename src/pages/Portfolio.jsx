@@ -161,16 +161,16 @@ import { getFmvDiscount } from '@/data/propertyFmv';
 
       const { properties, coolwood, solarAsset, totalGross, totalMortgage, loftyGross, loftyFmv, cryptoAssets = [] } = data;
       const allProperties = coolwood ? [coolwood, ...properties] : properties;
-      const llcEquityShare = offChainAssets[0].equityShare;
-      const debtShareLuna = Math.round(offChainAssets[0].mortgage * offChainAssets[0].ownershipPct / 100);
+      const offChainEquity = offChainAssets.reduce((sum, a) => sum + (a.equityShare || 0), 0);
+      const offChainDebt = offChainAssets.reduce((sum, a) => sum + Math.round((a.mortgage || 0) * (a.ownershipPct || 0) / 100), 0);
       
       // Use dynamic solar data if available, otherwise fallback to static
       const solarCost = solarAsset ? solarAsset.totalValue : staticSolarAsset.cost;
       const solarLoanBalance = solarAsset ? solarAsset.loanBalance : staticSolarAsset.loanBalance;
       const solarEquity = solarAsset ? solarAsset.equity : staticSolarAsset.equity;
       
-      const totalDebt = totalMortgage + debtShareLuna + solarLoanBalance;
-      const grossAssets = totalGross + Math.round(offChainAssets[0].propertyValue * offChainAssets[0].ownershipPct / 100) + solarCost + 3910;
+      const totalDebt = totalMortgage + offChainDebt + solarLoanBalance;
+      const grossAssets = totalGross + offChainEquity + solarCost + 3910;
       const netWorth = grossAssets - totalDebt;
       const solar = staticSolarAsset.production;
 
@@ -191,7 +191,7 @@ import { getFmvDiscount } from '@/data/propertyFmv';
               <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-red-400 flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> Total Debt</CardTitle></CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-red-400">-{formatUSD(totalDebt)}</div>
-                <p className="text-xs text-muted-foreground">Coolwood $750k + Luna share ${(debtShareLuna/1000).toFixed(0)}k + solar ${(solarLoanBalance/1000).toFixed(0)}k</p>
+                <p className="text-xs text-muted-foreground">Coolwood $750k + Off-chain ${(offChainDebt/1000).toFixed(0)}k + Solar ${(solarLoanBalance/1000).toFixed(0)}k</p>
               </CardContent>
             </Card>
             <Card className="border-green-500/30">
