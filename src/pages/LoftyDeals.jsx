@@ -20,10 +20,22 @@ const itemVariants = {
   visible: { y: 0, opacity: 1, transition: { type: 'spring' } },
 };
 
+// Property image URL helper - uses property_id or address-based URL
+const getPropertyImage = (deal) => {
+    if (deal.image_url) return deal.image_url;
+    if (deal.property_id) {
+        // Try Lofty's CDN first
+        return `https://images.lofty.ai/images/${deal.property_id}/thumb-min.webp`;
+    }
+    // Fallback to Unsplash
+    return 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=200&q=80';
+};
+
 const AlphaCard = ({ deal }) => {
     const navigate = useNavigate();
     const { toast } = useToast();
     const [isDraftOpen, setIsDraftOpen] = useState(false);
+    const [imgError, setImgError] = useState(false);
     
     const alphaPercent = deal.nav_per_token && deal.market_price 
         ? ((deal.nav_per_token - deal.market_price) / deal.market_price * 100).toFixed(1)
@@ -59,21 +71,25 @@ const AlphaCard = ({ deal }) => {
         return 'text-orange-400';
     };
 
+    const fallbackImg = 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=200&q=80';
+
     return (
         <motion.div variants={itemVariants}>
             <Card className="overflow-hidden transition-all duration-200 hover:shadow-lg hover:border-primary/30">
-                {/* Compact header with image and title */}
                 <div className="flex">
-                    <div className="w-28 h-28 shrink-0 relative">
-                        <img 
-                            src={deal.image_url || `https://images.lofty.ai/images/${deal.property_id}/thumb-min.webp`} 
-                            alt={deal.address}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                                e.target.onerror = null;
-                                e.target.src = 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=200&q=80';
-                            }}
-                        />
+                    <div className="w-28 h-28 shrink-0 relative bg-secondary">
+                        {!imgError ? (
+                            <img 
+                                src={getPropertyImage(deal)}
+                                alt={deal.address}
+                                className="w-full h-full object-cover"
+                                onError={() => setImgError(true)}
+                            />
+                        ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-secondary">
+                                <TrendingUp className="h-8 w-8 text-muted-foreground" />
+                            </div>
+                        )}
                         {deal.proposal_rank && (
                             <span className="absolute top-1 left-1 bg-black/70 text-white text-xs font-bold px-1.5 py-0.5 rounded">
                                 #{deal.proposal_rank}
@@ -93,7 +109,6 @@ const AlphaCard = ({ deal }) => {
                             )}
                         </div>
                         
-                        {/* Alpha badge */}
                         <div className="flex items-center gap-2 mt-2">
                             <span className={`text-xl font-bold ${getAlphaColor(parseFloat(alphaPercent))}`}>
                                 +{alphaPercent}%
@@ -101,7 +116,6 @@ const AlphaCard = ({ deal }) => {
                             <span className="text-xs text-muted-foreground">alpha</span>
                         </div>
                         
-                        {/* NAV vs Market */}
                         <div className="flex gap-3 mt-1.5 text-xs">
                             <div>
                                 <span className="text-muted-foreground">NAV:</span>
@@ -113,7 +127,6 @@ const AlphaCard = ({ deal }) => {
                             </div>
                         </div>
                         
-                        {/* Cap rate if available */}
                         {deal.cap_rate && (
                             <div className="text-xs text-muted-foreground mt-1">
                                 Cap: {(deal.cap_rate * 100).toFixed(1)}%
@@ -122,7 +135,6 @@ const AlphaCard = ({ deal }) => {
                     </div>
                 </div>
                 
-                {/* Upside and action */}
                 <div className="flex items-center justify-between px-3 py-2 bg-secondary/20 border-t">
                     <span className="text-sm">
                         <span className="text-muted-foreground">Upside:</span>
@@ -133,7 +145,6 @@ const AlphaCard = ({ deal }) => {
                     </Button>
                 </div>
                 
-                {/* Expandable thesis */}
                 {deal.proposal_draft && (
                     <Collapsible open={isDraftOpen} onOpenChange={setIsDraftOpen}>
                         <CollapsibleTrigger asChild>
@@ -154,11 +165,14 @@ const AlphaCard = ({ deal }) => {
     );
 };
 
-const StrategyCard = ({ scenario }) => {
-    const winner = scenario.winner || 'Hybrid LP';
-    const quoteReturn = scenario.quote_return || 0;
-    const baseReturn = scenario.base_return || 0;
-    const hybridReturn = scenario.hybrid_return || 0;
+const StrategyCard = ({ deal }) => {
+    const winner = deal.winner || 'Base LP';
+    const quoteReturn = deal.quote_return || 0;
+    const baseReturn = deal.base_return || 0;
+    const hybridReturn = deal.hybrid_return || 0;
+    const [imgError, setImgError] = useState(false);
+    
+    const loftyUrl = deal.property_id ? `https://www.lofty.ai/property/${deal.property_id}` : null;
     
     const getWinnerBadge = (w) => {
         if (w === 'Quote LP') return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
@@ -167,50 +181,74 @@ const StrategyCard = ({ scenario }) => {
     };
     
     const formatReturn = (val) => {
-        if (val === null || val === undefined) return '—';
-        const formatted = (val * 100).toFixed(1);
+        if (val === null || val === undefined || val === 0) return '—';
+        const formatted = (val * 100).toFixed(0);
         return val >= 0 ? `+${formatted}%` : `${formatted}%`;
     };
     
     const getReturnColor = (val) => {
-        if (val === null || val === undefined) return 'text-muted-foreground';
+        if (val === null || val === undefined || val === 0) return 'text-muted-foreground';
         return val >= 0 ? 'text-green-400' : 'text-red-400';
     };
 
     return (
         <motion.div variants={itemVariants}>
-            <Card className="p-3 transition-all duration-200 hover:shadow-lg">
-                <div className="flex justify-between items-start mb-2">
-                    <h3 className="font-semibold text-sm">{scenario.scenario}</h3>
-                    <span className={`px-1.5 py-0.5 rounded text-xs font-medium border ${getWinnerBadge(winner)}`}>
-                        {winner}
-                    </span>
+            <Card className="overflow-hidden transition-all duration-200 hover:shadow-lg hover:border-primary/30">
+                <div className="flex">
+                    <div className="w-24 h-24 shrink-0 relative bg-secondary">
+                        {!imgError ? (
+                            <img 
+                                src={getPropertyImage(deal)}
+                                alt={deal.address}
+                                className="w-full h-full object-cover"
+                                onError={() => setImgError(true)}
+                            />
+                        ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                                <PieChart className="h-6 w-6 text-muted-foreground" />
+                            </div>
+                        )}
+                    </div>
+                    <div className="flex-1 p-2.5 min-w-0">
+                        <div className="flex justify-between items-start gap-1">
+                            <div className="min-w-0">
+                                <h3 className="font-medium text-xs truncate">{deal.address}</h3>
+                                <p className="text-[10px] text-muted-foreground">{deal.city}, {deal.state}</p>
+                            </div>
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0 ${getWinnerBadge(winner)}`}>
+                                {winner}
+                            </span>
+                        </div>
+                        
+                        <div className="grid grid-cols-3 gap-1 mt-2 text-center">
+                            <div className="bg-secondary/30 rounded p-1.5">
+                                <div className="text-[10px] text-muted-foreground">Quote</div>
+                                <div className={`text-xs font-bold ${getReturnColor(quoteReturn)}`}>
+                                    {formatReturn(quoteReturn)}
+                                </div>
+                            </div>
+                            <div className="bg-secondary/30 rounded p-1.5">
+                                <div className="text-[10px] text-muted-foreground">Base</div>
+                                <div className={`text-xs font-bold ${getReturnColor(baseReturn)}`}>
+                                    {formatReturn(baseReturn)}
+                                </div>
+                            </div>
+                            <div className="bg-secondary/30 rounded p-1.5">
+                                <div className="text-[10px] text-muted-foreground">Hybrid</div>
+                                <div className={`text-xs font-bold ${getReturnColor(hybridReturn)}`}>
+                                    {formatReturn(hybridReturn)}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {deal.market_oracle_ratio && (
+                            <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-1.5">
+                                <span>Mkt/Oracle:</span>
+                                <span className="font-mono font-bold">{deal.market_oracle_ratio.toFixed(2)}</span>
+                            </div>
+                        )}
+                    </div>
                 </div>
-                
-                <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-secondary/30 rounded p-2">
-                        <div className="text-xs text-muted-foreground mb-0.5">Quote</div>
-                        <div className={`text-sm font-bold ${getReturnColor(quoteReturn)}`}>
-                            {formatReturn(quoteReturn)}
-                        </div>
-                    </div>
-                    <div className="bg-secondary/30 rounded p-2">
-                        <div className="text-xs text-muted-foreground mb-0.5">Base</div>
-                        <div className={`text-sm font-bold ${getReturnColor(baseReturn)}`}>
-                            {formatReturn(baseReturn)}
-                        </div>
-                    </div>
-                    <div className="bg-secondary/30 rounded p-2">
-                        <div className="text-xs text-muted-foreground mb-0.5">Hybrid</div>
-                        <div className={`text-sm font-bold ${getReturnColor(hybridReturn)}`}>
-                            {formatReturn(hybridReturn)}
-                        </div>
-                    </div>
-                </div>
-                
-                {scenario.notes && (
-                    <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{scenario.notes}</p>
-                )}
             </Card>
         </motion.div>
     );
@@ -219,8 +257,9 @@ const StrategyCard = ({ scenario }) => {
 const CashflowCard = ({ deal }) => {
     const navigate = useNavigate();
     const { toast } = useToast();
+    const [imgError, setImgError] = useState(false);
     
-    const coc = deal.coc || 0;
+    const coc = deal.coc || deal.cash_on_cash || 0;
     const loftyUrl = deal.property_id ? `https://www.lofty.ai/property/${deal.property_id}` : null;
 
     const handleCreateProposal = () => {
@@ -230,50 +269,68 @@ const CashflowCard = ({ deal }) => {
             address: deal.address || '',
             city: deal.city || '',
             state: deal.state || '',
-            coc: coc.toString(),
+            coc: (coc * 100).toFixed(1),
         });
         navigate(`/proposals/new?${params.toString()}`);
         toast({ title: "Creating Proposal", description: `Drafting proposal for ${deal.address}` });
+    };
+    
+    const getCocColor = (c) => {
+        if (c >= 0.15) return 'text-green-400';
+        if (c >= 0.10) return 'text-emerald-400';
+        return 'text-yellow-400';
     };
 
     return (
         <motion.div variants={itemVariants}>
             <Card className="overflow-hidden transition-all duration-200 hover:shadow-lg hover:border-primary/30">
                 <div className="flex">
-                    <div className="w-24 h-24 shrink-0 relative">
-                        <img 
-                            src={deal.image_url || `https://images.lofty.ai/images/${deal.property_id}/thumb-min.webp`}
-                            alt={deal.address}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                                e.target.onerror = null;
-                                e.target.src = 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=200&q=80';
-                            }}
-                        />
-                    </div>
-                    <div className="flex-1 p-3 min-w-0">
-                        <h3 className="font-semibold text-sm truncate">{deal.address}</h3>
-                        <p className="text-xs text-muted-foreground">{deal.city}, {deal.state}</p>
-                        
-                        <div className="flex items-center gap-2 mt-2">
-                            <Percent className="h-4 w-4 text-green-400" />
-                            <span className="text-lg font-bold text-green-400">{(coc * 100).toFixed(1)}%</span>
-                            <span className="text-xs text-muted-foreground">CoC</span>
-                        </div>
-                        
-                        {deal.cap_rate && (
-                            <div className="text-xs text-muted-foreground mt-1">
-                                Cap Rate: {(deal.cap_rate * 100).toFixed(1)}%
+                    <div className="w-24 h-24 shrink-0 relative bg-secondary">
+                        {!imgError ? (
+                            <img 
+                                src={getPropertyImage(deal)}
+                                alt={deal.address}
+                                className="w-full h-full object-cover"
+                                onError={() => setImgError(true)}
+                            />
+                        ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                                <DollarSign className="h-6 w-6 text-muted-foreground" />
                             </div>
                         )}
                     </div>
+                    <div className="flex-1 p-2.5 min-w-0">
+                        <h3 className="font-medium text-xs truncate">{deal.address}</h3>
+                        <p className="text-[10px] text-muted-foreground">{deal.city}, {deal.state}</p>
+                        
+                        <div className="flex items-center gap-2 mt-2">
+                            <Percent className="h-4 w-4 text-green-400" />
+                            <span className={`text-lg font-bold ${getCocColor(coc)}`}>
+                                {(coc * 100).toFixed(1)}%
+                            </span>
+                            <span className="text-xs text-muted-foreground">CoC</span>
+                        </div>
+                        
+                        <div className="flex gap-3 mt-1.5 text-[10px]">
+                            <div>
+                                <span className="text-muted-foreground">Price:</span>
+                                <span className="ml-1 font-medium">${deal.market_price?.toFixed(2) || '—'}</span>
+                            </div>
+                            {deal.cap_rate && (
+                                <div>
+                                    <span className="text-muted-foreground">Cap:</span>
+                                    <span className="ml-1 font-medium">{(deal.cap_rate * 100).toFixed(1)}%</span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
                 
-                <div className="flex items-center justify-between px-3 py-2 bg-secondary/20 border-t">
-                    <span className="text-xs text-muted-foreground">
+                <div className="flex items-center justify-between px-2.5 py-1.5 bg-secondary/20 border-t">
+                    <span className="text-[10px] text-muted-foreground">
                         Market: ${deal.market_price?.toFixed(2) || '—'}
                     </span>
-                    <Button size="sm" onClick={handleCreateProposal} className="h-7 text-xs">
+                    <Button size="sm" onClick={handleCreateProposal} className="h-6 text-[10px] px-2">
                         <FilePlus className="mr-1 h-3 w-3" /> Proposal
                     </Button>
                 </div>
@@ -312,10 +369,11 @@ const LoftyDeals = () => {
                 }
 
                 // Fetch cashflow opportunities (high CoC, ordered by CoC)
+                // Try both coc and cash_on_cash column names
                 const { data: cashflowData, error: cashflowErr } = await supabase
                     .from('lofty_alpha_opportunities')
                     .select('*')
-                    .gt('coc', 0.1)  // CoC > 10%
+                    .or('coc.gt.0.08,cash_on_cash.gt.0.08')
                     .order('coc', { ascending: false })
                     .limit(20);
                 
@@ -415,14 +473,14 @@ const LoftyDeals = () => {
                       </Card>
                   ) : (
                       <>
-                      <div className="mb-4 p-3 bg-secondary/30 rounded-lg flex items-center justify-between">
+                      <div className="mb-3 p-3 bg-secondary/30 rounded-lg flex items-center justify-between">
                           <div>
-                              <h3 className="font-semibold text-sm">LP Strategy Backtest Results</h3>
+                              <h3 className="font-semibold text-sm">LP Strategy Recommendations</h3>
                               <p className="text-xs text-muted-foreground">Quote LP = fee capture • Base LP = price upside • Hybrid = balanced</p>
                           </div>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                          {strategyData.map((s, i) => <StrategyCard key={s.id || i} scenario={s} />)}
+                          {strategyData.map((s, i) => <StrategyCard key={s.id || s.property_id || i} deal={s} />)}
                       </div>
                       </>
                   )}
@@ -436,9 +494,9 @@ const LoftyDeals = () => {
                       </Card>
                   ) : (
                       <>
-                      <div className="mb-4 p-3 bg-secondary/30 rounded-lg">
+                      <div className="mb-3 p-3 bg-secondary/30 rounded-lg">
                           <h3 className="font-semibold text-sm">High Cash-on-Cash Return Properties</h3>
-                          <p className="text-xs text-muted-foreground">Properties with CoC &gt; 10%, ordered by cash yield</p>
+                          <p className="text-xs text-muted-foreground">Properties with CoC &gt; 8%, ordered by cash yield</p>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                           {cashflowDeals.map(deal => <CashflowCard key={deal.property_id || deal.id} deal={deal} />)}
