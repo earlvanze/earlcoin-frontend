@@ -1,6 +1,6 @@
 
 import React from 'react';
-    import { Bell, LogIn, LogOut, User, Settings as SettingsIcon, Gem } from 'lucide-react';
+    import { Bell, LogIn, LogOut, User, Settings as SettingsIcon, Gem, Wallet } from 'lucide-react';
     import { Button } from '@/components/ui/button';
     import {
       DropdownMenu,
@@ -16,7 +16,7 @@ import React from 'react';
     import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
     const Header = () => {
-      const { notifications } = useAppContext();
+      const { notifications, isConnected, accountAddress, handleConnect, handleDisconnect } = useAppContext();
       const { session, signOut } = useAuth();
       const user = session?.user;
       const navigate = useNavigate();
@@ -89,9 +89,21 @@ import React from 'react';
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <Button onClick={() => navigate('/login')} variant="outline" size="sm" className="hidden md:flex">
-                <LogIn className="mr-2 h-4 w-4" /> Login
-              </Button>
+              <>
+                {isConnected && accountAddress ? (
+                  <Button variant="outline" size="sm" className="hidden md:flex gap-2">
+                    <Wallet className="h-4 w-4" />
+                    <span className="font-mono text-xs">{accountAddress.slice(0, 4)}...{accountAddress.slice(-4)}</span>
+                  </Button>
+                ) : (
+                  <Button onClick={handleConnect} variant="outline" size="sm" className="hidden md:flex">
+                    <Wallet className="mr-2 h-4 w-4" /> Connect Wallet
+                  </Button>
+                )}
+                <Button onClick={() => navigate('/login')} variant="outline" size="sm" className="hidden md:flex ml-2">
+                  <LogIn className="mr-2 h-4 w-4" /> Login
+                </Button>
+              </>
             )}
           </div>
         </header>
