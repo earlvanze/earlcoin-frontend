@@ -66,7 +66,7 @@ import React from 'react';
           ],
         },
       },
-,
+
       {
         name: '804 S Quitman St, Denver, CO 80219',
         aka: 'Denver SFR — Lofty DAO (pre-tokenization)',
@@ -129,7 +129,7 @@ import React from 'react';
 
     const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.05 } } };
     const itemVariants = { hidden: { y: 20, opacity: 0 }, visible: { y: 0, opacity: 1, transition: { type: 'spring' } } };
-    const formatUSD = (val) => val.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+    const formatUSD = (val) => (val ?? 0).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 
     const Portfolio = () => {
       const { data, loading, error, lastUpdated } = usePortfolioData();
@@ -217,7 +217,7 @@ import React from 'react';
                         <div className="min-w-0">
                           <p className="font-medium text-sm truncate">{asset.address}</p>
                           <p className="text-xs text-muted-foreground">
-                            {asset.tokens.toLocaleString()} tokens @ ${asset.lpPrice?.toFixed(2) || '?'}
+                            {(asset.tokens || 0).toLocaleString()} tokens @ ${asset.lpPrice?.toFixed(2) || asset.tokenValue?.toFixed(2) || '?'}
                             {asset.wallet && <span className="ml-2 text-purple-400/60">[{asset.wallet}]</span>}
                             {asset.isCoolwood && <span className="text-yellow-400 ml-2">⚠ ${(asset.mortgage/1000).toFixed(0)}k mortgage</span>}
                           </p>
@@ -239,7 +239,7 @@ import React from 'react';
                         <div className="text-right min-w-[120px]">
                           <p className="font-semibold">{formatUSD(asset.value)}</p>
                           <p className="text-xs text-muted-foreground">
-                            {(asset.value / totalGross * 100).toFixed(1)}% of portfolio
+                            {((asset.value || 0) / (totalGross || 1) * 100).toFixed(1)}% of portfolio
                           </p>
                         </div>
                       </div>
