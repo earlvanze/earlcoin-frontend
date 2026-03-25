@@ -3,20 +3,20 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import PageTitle from '@/components/PageTitle';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { TrendingUp, DollarSign, Bot, FilePlus, Loader2, AlertTriangle, ExternalLink, ChevronDown, ChevronUp, Target, BarChart3, Sparkles, Activity, PieChart, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { TrendingUp, DollarSign, Bot, FilePlus, Loader2, AlertTriangle, ExternalLink, ChevronDown, ChevronUp, Target, BarChart3, Sparkles, Activity, PieChart, Percent } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
 
 const containerVariants = {
   hidden: { opacity: 0 },
-  visible: { opacity: 1, transition: { staggerChildren: 0.1 } },
+  visible: { opacity: 1, transition: { staggerChildren: 0.05 } },
 };
 
 const itemVariants = {
-  hidden: { y: 20, opacity: 0 },
+  hidden: { y: 10, opacity: 0 },
   visible: { y: 0, opacity: 1, transition: { type: 'spring' } },
 };
 
@@ -61,122 +61,94 @@ const AlphaCard = ({ deal }) => {
 
     return (
         <motion.div variants={itemVariants}>
-            <Card className="overflow-hidden transition-all duration-300 hover:shadow-primary/20 hover:shadow-lg">
-                <CardHeader className="p-0">
-                    <img 
-                        src={deal.image_url || `https://images.lofty.ai/images/${deal.property_id}/thumb-min.webp`} 
-                        alt={`Property at ${deal.address}`} 
-                        className="w-full h-48 object-cover"
-                        onError={(e) => {
-                            e.target.src = 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&q=80';
-                        }}
-                    />
-                    <div className="p-6">
-                        <div className="flex justify-between items-start">
-                            <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                    {deal.proposal_rank && (
-                                        <span className="bg-primary/20 text-primary text-xs font-bold px-2 py-1 rounded">
-                                            #{deal.proposal_rank}
-                                        </span>
-                                    )}
-                                    {deal.featured && (
-                                        <Sparkles className="h-4 w-4 text-yellow-400" />
-                                    )}
-                                </div>
-                                <CardTitle className="flex-1">{deal.address}</CardTitle>
+            <Card className="overflow-hidden transition-all duration-200 hover:shadow-lg hover:border-primary/30">
+                {/* Compact header with image and title */}
+                <div className="flex">
+                    <div className="w-28 h-28 shrink-0 relative">
+                        <img 
+                            src={deal.image_url || `https://images.lofty.ai/images/${deal.property_id}/thumb-min.webp`} 
+                            alt={deal.address}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                                e.target.onerror = null;
+                                e.target.src = 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=200&q=80';
+                            }}
+                        />
+                        {deal.proposal_rank && (
+                            <span className="absolute top-1 left-1 bg-black/70 text-white text-xs font-bold px-1.5 py-0.5 rounded">
+                                #{deal.proposal_rank}
+                            </span>
+                        )}
+                    </div>
+                    <div className="flex-1 p-3 min-w-0">
+                        <div className="flex justify-between items-start gap-2">
+                            <div className="min-w-0">
+                                <h3 className="font-semibold text-sm truncate">{deal.address}</h3>
+                                <p className="text-xs text-muted-foreground">{deal.city}, {deal.state}</p>
                             </div>
                             {loftyUrl && (
-                                <a 
-                                    href={loftyUrl} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="text-muted-foreground hover:text-primary transition-colors"
-                                >
-                                    <ExternalLink className="h-4 w-4" />
+                                <a href={loftyUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary shrink-0">
+                                    <ExternalLink className="h-3.5 w-3.5" />
                                 </a>
                             )}
                         </div>
-                        <p className="text-sm text-muted-foreground mt-1">{deal.city}, {deal.state}</p>
-                    </div>
-                </CardHeader>
-                
-                <CardContent className="px-6 space-y-4">
-                    {/* Alpha Badge */}
-                    <div className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 rounded-lg p-4 text-center">
-                        <div className="flex items-center justify-center gap-2 mb-1">
-                            <Target className="h-5 w-5 text-green-400" />
-                            <span className="text-sm text-muted-foreground">Alpha Potential</span>
+                        
+                        {/* Alpha badge */}
+                        <div className="flex items-center gap-2 mt-2">
+                            <span className={`text-xl font-bold ${getAlphaColor(parseFloat(alphaPercent))}`}>
+                                +{alphaPercent}%
+                            </span>
+                            <span className="text-xs text-muted-foreground">alpha</span>
                         </div>
-                        <p className={`text-3xl font-bold ${getAlphaColor(parseFloat(alphaPercent))}`}>
-                            +{alphaPercent}%
-                        </p>
-                    </div>
-                    
-                    {/* NAV vs Market */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-secondary/30 rounded-lg p-3">
-                            <p className="text-xs text-muted-foreground mb-1">NAV / Token</p>
-                            <p className="text-xl font-bold text-green-400">${deal.nav_per_token?.toFixed(2) || '—'}</p>
-                            <p className="text-xs text-muted-foreground">Intrinsic value</p>
-                        </div>
-                        <div className="bg-secondary/30 rounded-lg p-3">
-                            <p className="text-xs text-muted-foreground mb-1">Market Price</p>
-                            <p className="text-xl font-bold">${deal.market_price?.toFixed(2) || '—'}</p>
-                            <p className="text-xs text-muted-foreground">Current LP price</p>
-                        </div>
-                    </div>
-                    
-                    {/* Additional metrics */}
-                    {deal.cap_rate && (
-                        <div className="flex items-center gap-4 text-sm">
-                            <div className="flex items-center gap-1">
-                                <BarChart3 className="h-4 w-4 text-muted-foreground" />
-                                <span className="text-muted-foreground">Cap Rate:</span>
-                                <span className="font-medium">{(deal.cap_rate * 100).toFixed(1)}%</span>
+                        
+                        {/* NAV vs Market */}
+                        <div className="flex gap-3 mt-1.5 text-xs">
+                            <div>
+                                <span className="text-muted-foreground">NAV:</span>
+                                <span className="ml-1 font-semibold text-green-400">${deal.nav_per_token?.toFixed(2)}</span>
                             </div>
-                            {deal.coc && (
-                                <div className="flex items-center gap-1">
-                                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                                    <span className="text-muted-foreground">CoC:</span>
-                                    <span className="font-medium">{(deal.coc * 100).toFixed(1)}%</span>
-                                </div>
-                            )}
+                            <div>
+                                <span className="text-muted-foreground">Market:</span>
+                                <span className="ml-1 font-semibold">${deal.market_price?.toFixed(2)}</span>
+                            </div>
                         </div>
-                    )}
-                    
-                    {/* Proposal Draft Expandable */}
-                    {deal.proposal_draft && (
-                        <Collapsible open={isDraftOpen} onOpenChange={setIsDraftOpen}>
-                            <CollapsibleTrigger asChild>
-                                <Button variant="ghost" className="w-full flex items-center justify-between">
-                                    <span className="flex items-center gap-2">
-                                        <FilePlus className="h-4 w-4" />
-                                        Investment Thesis
-                                    </span>
-                                    {isDraftOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                                </Button>
-                            </CollapsibleTrigger>
-                            <CollapsibleContent>
-                                <div className="mt-2 p-4 bg-secondary/20 rounded-lg text-sm prose prose-invert prose-sm max-w-none">
-                                    <pre className="whitespace-pre-wrap font-sans">{deal.proposal_draft}</pre>
-                                </div>
-                            </CollapsibleContent>
-                        </Collapsible>
-                    )}
-                </CardContent>
-                
-                <CardFooter className="bg-secondary/30 p-4 flex justify-between items-center">
-                    <div>
-                        <p className="text-sm text-muted-foreground">Upside</p>
-                        <p className="font-bold text-green-400">
-                            +${((deal.nav_per_token || 0) - (deal.market_price || 0)).toFixed(2)}/token
-                        </p>
+                        
+                        {/* Cap rate if available */}
+                        {deal.cap_rate && (
+                            <div className="text-xs text-muted-foreground mt-1">
+                                Cap: {(deal.cap_rate * 100).toFixed(1)}%
+                            </div>
+                        )}
                     </div>
-                    <Button onClick={handleCreateProposal} className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700">
-                        <FilePlus className="mr-2 h-4 w-4" /> Create Proposal
+                </div>
+                
+                {/* Upside and action */}
+                <div className="flex items-center justify-between px-3 py-2 bg-secondary/20 border-t">
+                    <span className="text-sm">
+                        <span className="text-muted-foreground">Upside:</span>
+                        <span className="ml-1 font-bold text-green-400">+${((deal.nav_per_token || 0) - (deal.market_price || 0)).toFixed(2)}</span>
+                    </span>
+                    <Button size="sm" onClick={handleCreateProposal} className="h-7 text-xs bg-gradient-to-r from-purple-600 to-indigo-600">
+                        <FilePlus className="mr-1 h-3 w-3" /> Proposal
                     </Button>
-                </CardFooter>
+                </div>
+                
+                {/* Expandable thesis */}
+                {deal.proposal_draft && (
+                    <Collapsible open={isDraftOpen} onOpenChange={setIsDraftOpen}>
+                        <CollapsibleTrigger asChild>
+                            <button className="w-full px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/30 transition-colors flex items-center justify-center gap-1">
+                                <span>Investment Thesis</span>
+                                {isDraftOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                            </button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                            <div className="px-3 py-2 text-xs bg-secondary/30 max-h-40 overflow-y-auto">
+                                <pre className="whitespace-pre-wrap font-sans">{deal.proposal_draft}</pre>
+                            </div>
+                        </CollapsibleContent>
+                    </Collapsible>
+                )}
             </Card>
         </motion.div>
     );
@@ -188,10 +160,10 @@ const StrategyCard = ({ scenario }) => {
     const baseReturn = scenario.base_return || 0;
     const hybridReturn = scenario.hybrid_return || 0;
     
-    const getWinnerColor = (w) => {
-        if (w === 'Quote LP') return 'text-blue-400';
-        if (w === 'Base LP') return 'text-green-400';
-        return 'text-purple-400';
+    const getWinnerBadge = (w) => {
+        if (w === 'Quote LP') return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+        if (w === 'Base LP') return 'bg-green-500/20 text-green-400 border-green-500/30';
+        return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
     };
     
     const formatReturn = (val) => {
@@ -207,66 +179,104 @@ const StrategyCard = ({ scenario }) => {
 
     return (
         <motion.div variants={itemVariants}>
-            <Card className="overflow-hidden transition-all duration-300 hover:shadow-primary/20 hover:shadow-lg">
-                <CardHeader className="pb-2">
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <CardTitle className="text-lg">{scenario.scenario}</CardTitle>
-                            <p className="text-sm text-muted-foreground">{scenario.description || ''}</p>
-                        </div>
-                        <span className={`px-2 py-1 rounded text-xs font-bold ${getWinnerColor(winner)} bg-secondary/50`}>
-                            {winner} wins
-                        </span>
-                    </div>
-                </CardHeader>
+            <Card className="p-3 transition-all duration-200 hover:shadow-lg">
+                <div className="flex justify-between items-start mb-2">
+                    <h3 className="font-semibold text-sm">{scenario.scenario}</h3>
+                    <span className={`px-1.5 py-0.5 rounded text-xs font-medium border ${getWinnerBadge(winner)}`}>
+                        {winner}
+                    </span>
+                </div>
                 
-                <CardContent className="space-y-4">
-                    {/* Returns Grid */}
-                    <div className="grid grid-cols-3 gap-2">
-                        <div className={`rounded p-3 ${winner === 'Quote LP' ? 'bg-blue-500/20 ring-1 ring-blue-500/50' : 'bg-secondary/30'}`}>
-                            <div className="flex items-center gap-1 mb-1">
-                                <Activity className="h-3 w-3 text-blue-400" />
-                                <span className="text-xs text-muted-foreground">Quote LP</span>
-                            </div>
-                            <p className={`text-lg font-bold ${getReturnColor(quoteReturn)}`}>
-                                {formatReturn(quoteReturn)}
-                            </p>
-                        </div>
-                        <div className={`rounded p-3 ${winner === 'Base LP' ? 'bg-green-500/20 ring-1 ring-green-500/50' : 'bg-secondary/30'}`}>
-                            <div className="flex items-center gap-1 mb-1">
-                                <TrendingUp className="h-3 w-3 text-green-400" />
-                                <span className="text-xs text-muted-foreground">Base LP</span>
-                            </div>
-                            <p className={`text-lg font-bold ${getReturnColor(baseReturn)}`}>
-                                {formatReturn(baseReturn)}
-                            </p>
-                        </div>
-                        <div className={`rounded p-3 ${winner === 'Hybrid LP' ? 'bg-purple-500/20 ring-1 ring-purple-500/50' : 'bg-secondary/30'}`}>
-                            <div className="flex items-center gap-1 mb-1">
-                                <PieChart className="h-3 w-3 text-purple-400" />
-                                <span className="text-xs text-muted-foreground">Hybrid LP</span>
-                            </div>
-                            <p className={`text-lg font-bold ${getReturnColor(hybridReturn)}`}>
-                                {formatReturn(hybridReturn)}
-                            </p>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-secondary/30 rounded p-2">
+                        <div className="text-xs text-muted-foreground mb-0.5">Quote</div>
+                        <div className={`text-sm font-bold ${getReturnColor(quoteReturn)}`}>
+                            {formatReturn(quoteReturn)}
                         </div>
                     </div>
-                    
-                    {/* Market/Oracle Ratio */}
-                    {scenario.market_oracle_ratio && (
-                        <div className="flex items-center justify-between text-sm bg-secondary/20 rounded p-2">
-                            <span className="text-muted-foreground">Market/Oracle Ratio:</span>
-                            <span className="font-mono font-bold">
-                                {scenario.market_oracle_ratio.toFixed(2)}
-                            </span>
+                    <div className="bg-secondary/30 rounded p-2">
+                        <div className="text-xs text-muted-foreground mb-0.5">Base</div>
+                        <div className={`text-sm font-bold ${getReturnColor(baseReturn)}`}>
+                            {formatReturn(baseReturn)}
                         </div>
-                    )}
-                    
-                    {/* Notes */}
-                    {scenario.notes && (
-                        <p className="text-xs text-muted-foreground italic">{scenario.notes}</p>
-                    )}
-                </CardContent>
+                    </div>
+                    <div className="bg-secondary/30 rounded p-2">
+                        <div className="text-xs text-muted-foreground mb-0.5">Hybrid</div>
+                        <div className={`text-sm font-bold ${getReturnColor(hybridReturn)}`}>
+                            {formatReturn(hybridReturn)}
+                        </div>
+                    </div>
+                </div>
+                
+                {scenario.notes && (
+                    <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{scenario.notes}</p>
+                )}
+            </Card>
+        </motion.div>
+    );
+};
+
+const CashflowCard = ({ deal }) => {
+    const navigate = useNavigate();
+    const { toast } = useToast();
+    
+    const coc = deal.coc || 0;
+    const loftyUrl = deal.property_id ? `https://www.lofty.ai/property/${deal.property_id}` : null;
+
+    const handleCreateProposal = () => {
+        const params = new URLSearchParams({
+            type: 'cashflow',
+            property_id: deal.property_id || '',
+            address: deal.address || '',
+            city: deal.city || '',
+            state: deal.state || '',
+            coc: coc.toString(),
+        });
+        navigate(`/proposals/new?${params.toString()}`);
+        toast({ title: "Creating Proposal", description: `Drafting proposal for ${deal.address}` });
+    };
+
+    return (
+        <motion.div variants={itemVariants}>
+            <Card className="overflow-hidden transition-all duration-200 hover:shadow-lg hover:border-primary/30">
+                <div className="flex">
+                    <div className="w-24 h-24 shrink-0 relative">
+                        <img 
+                            src={deal.image_url || `https://images.lofty.ai/images/${deal.property_id}/thumb-min.webp`}
+                            alt={deal.address}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                                e.target.onerror = null;
+                                e.target.src = 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=200&q=80';
+                            }}
+                        />
+                    </div>
+                    <div className="flex-1 p-3 min-w-0">
+                        <h3 className="font-semibold text-sm truncate">{deal.address}</h3>
+                        <p className="text-xs text-muted-foreground">{deal.city}, {deal.state}</p>
+                        
+                        <div className="flex items-center gap-2 mt-2">
+                            <Percent className="h-4 w-4 text-green-400" />
+                            <span className="text-lg font-bold text-green-400">{(coc * 100).toFixed(1)}%</span>
+                            <span className="text-xs text-muted-foreground">CoC</span>
+                        </div>
+                        
+                        {deal.cap_rate && (
+                            <div className="text-xs text-muted-foreground mt-1">
+                                Cap Rate: {(deal.cap_rate * 100).toFixed(1)}%
+                            </div>
+                        )}
+                    </div>
+                </div>
+                
+                <div className="flex items-center justify-between px-3 py-2 bg-secondary/20 border-t">
+                    <span className="text-xs text-muted-foreground">
+                        Market: ${deal.market_price?.toFixed(2) || '—'}
+                    </span>
+                    <Button size="sm" onClick={handleCreateProposal} className="h-7 text-xs">
+                        <FilePlus className="mr-1 h-3 w-3" /> Proposal
+                    </Button>
+                </div>
             </Card>
         </motion.div>
     );
@@ -282,7 +292,7 @@ const LoftyDeals = () => {
     useEffect(() => {
         const fetchDeals = async () => {
             try {
-                // Fetch alpha opportunities (featured)
+                // Fetch alpha opportunities (with proposal_rank)
                 const { data: alphaData, error: alphaErr } = await supabase
                     .from('lofty_alpha_opportunities')
                     .select('*')
@@ -297,19 +307,23 @@ const LoftyDeals = () => {
                     .select('*')
                     .order('scenario', { ascending: true });
                 
-                // Don't throw on strategy error - it's optional
                 if (!strategyErr) {
                     setStrategyData(strategyData || []);
                 }
 
-                // Try to fetch cashflow picks (legacy table, may not exist)
-                const { data: cashflowData } = await supabase
-                    .from('lofty_cashflow_picks')
+                // Fetch cashflow opportunities (high CoC, ordered by CoC)
+                const { data: cashflowData, error: cashflowErr } = await supabase
+                    .from('lofty_alpha_opportunities')
                     .select('*')
-                    .order('last_updated', { ascending: false });
+                    .gt('coc', 0.1)  // CoC > 10%
+                    .order('coc', { ascending: false })
+                    .limit(20);
+                
+                if (!cashflowErr) {
+                    setCashflowDeals(cashflowData || []);
+                }
 
                 setAlphaDeals(alphaData || []);
-                setCashflowDeals(cashflowData || []);
             } catch (err) {
                 setError(err.message);
             } finally {
@@ -362,9 +376,9 @@ const LoftyDeals = () => {
               </p>
             </Card>
           ) : (
-            <Tabs defaultValue="equity" className="space-y-6">
+            <Tabs defaultValue="equity" className="space-y-4">
               <motion.div variants={itemVariants}>
-                  <TabsList className="grid w-full grid-cols-3 max-w-lg mx-auto mb-8">
+                  <TabsList className="grid w-full grid-cols-3 max-w-lg mx-auto mb-4">
                       <TabsTrigger value="equity">
                           <TrendingUp className="mr-2 h-4 w-4" /> 
                           Equity ({alphaDeals.length})
@@ -387,7 +401,7 @@ const LoftyDeals = () => {
                           <p className="text-muted-foreground">No equity opportunities identified currently.</p>
                       </Card>
                   ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                           {alphaDeals.map(deal => <AlphaCard key={deal.property_id || deal.id} deal={deal} />)}
                       </div>
                   )}
@@ -401,22 +415,13 @@ const LoftyDeals = () => {
                       </Card>
                   ) : (
                       <>
-                      <div className="mb-6 p-4 bg-secondary/30 rounded-lg">
-                          <h3 className="font-bold mb-2 flex items-center gap-2">
-                              <PieChart className="h-5 w-5 text-purple-400" />
-                              LP Strategy Recommendations
-                          </h3>
-                          <p className="text-sm text-muted-foreground">
-                              Backtested returns for Quote LP (fees), Base LP (price appreciation), and Hybrid LP strategies.
-                              Winner determined by highest risk-adjusted return.
-                          </p>
-                          <div className="mt-3 flex gap-4 text-xs">
-                              <span className="flex items-center gap-1"><Activity className="h-3 w-3 text-blue-400" /> Quote LP = fee capture</span>
-                              <span className="flex items-center gap-1"><TrendingUp className="h-3 w-3 text-green-400" /> Base LP = price upside</span>
-                              <span className="flex items-center gap-1"><PieChart className="h-3 w-3 text-purple-400" /> Hybrid = balanced</span>
+                      <div className="mb-4 p-3 bg-secondary/30 rounded-lg flex items-center justify-between">
+                          <div>
+                              <h3 className="font-semibold text-sm">LP Strategy Backtest Results</h3>
+                              <p className="text-xs text-muted-foreground">Quote LP = fee capture • Base LP = price upside • Hybrid = balanced</p>
                           </div>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                           {strategyData.map((s, i) => <StrategyCard key={s.id || i} scenario={s} />)}
                       </div>
                       </>
@@ -427,18 +432,18 @@ const LoftyDeals = () => {
                   {cashflowDeals.length === 0 ? (
                       <Card className="p-8 text-center">
                           <DollarSign className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                          <p className="text-muted-foreground">No cashflow plays identified currently.</p>
+                          <p className="text-muted-foreground">No high cashflow opportunities identified currently.</p>
                       </Card>
                   ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                          {cashflowDeals.map(deal => (
-                              <Card key={deal.id} className="p-6">
-                                  <h3 className="font-bold">{deal.address}</h3>
-                                  <p className="text-sm text-muted-foreground">{deal.city}, {deal.state}</p>
-                                  <p className="mt-2">CoC: {(deal.cash_on_cash * 100)?.toFixed(1)}%</p>
-                              </Card>
-                          ))}
+                      <>
+                      <div className="mb-4 p-3 bg-secondary/30 rounded-lg">
+                          <h3 className="font-semibold text-sm">High Cash-on-Cash Return Properties</h3>
+                          <p className="text-xs text-muted-foreground">Properties with CoC &gt; 10%, ordered by cash yield</p>
                       </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                          {cashflowDeals.map(deal => <CashflowCard key={deal.property_id || deal.id} deal={deal} />)}
+                      </div>
+                      </>
                   )}
               </TabsContent>
             </Tabs>
