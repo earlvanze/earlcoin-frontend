@@ -158,7 +158,7 @@ import React from 'react';
         );
       }
 
-      const { properties, coolwood, solarAsset, totalGross, totalMortgage, loftyGross, loftyFmv, cryptoAssets = [] } = data;
+      const { properties, coolwood, solarAsset, totalGross, totalFmv, totalMortgage, cryptoAssets = [] } = data;
       const allProperties = coolwood ? [coolwood, ...properties] : properties;
       const offChainEquity = offChainAssets.reduce((sum, a) => sum + (a.equityShare || 0), 0);
       const offChainDebt = offChainAssets.reduce((sum, a) => sum + Math.round((a.mortgage || 0) * (a.ownershipPct || 0) / 100), 0);
@@ -169,7 +169,8 @@ import React from 'react';
       const solarEquity = solarAsset ? solarAsset.equity : staticSolarAsset.equity;
       
       const totalDebt = totalMortgage + offChainDebt + solarLoanBalance;
-      const grossAssets = totalGross + offChainEquity + solarCost + 3910;
+      const onChainFmv = totalFmv || totalGross;
+      const grossAssets = onChainFmv + offChainEquity + solarCost + 3910;
       const netWorth = grossAssets - totalDebt;
       const solar = staticSolarAsset.production;
 
@@ -183,7 +184,7 @@ import React from 'react';
               <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Gross Assets</CardTitle></CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{formatUSD(grossAssets)}</div>
-                <p className="text-xs text-muted-foreground">Lofty + LLC share + solar + crypto</p>
+                <p className="text-xs text-muted-foreground">FMV basis + LLC share + solar + crypto</p>
               </CardContent>
             </Card>
             <Card className="border-red-500/30">
@@ -197,16 +198,16 @@ import React from 'react';
               <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-green-400">Net Equity</CardTitle></CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-green-400">{formatUSD(netWorth)}</div>
-                <p className="text-xs text-muted-foreground">All assets minus all debt</p>
+                <p className="text-xs text-muted-foreground">FMV assets minus all debt</p>
               </CardContent>
             </Card>
             <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">On-Chain Properties</CardTitle></CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Lofty Market Price</CardTitle></CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{allProperties.length}</div>
-                <p className="text-xs text-muted-foreground">LP: {formatUSD(totalGross)}</p>
-                {loftyFmv > totalGross && (
-                  <p className="text-xs text-green-400">FMV: {formatUSD(loftyFmv)} (+{formatUSD(loftyFmv - totalGross)})</p>
+                <div className="text-2xl font-bold">{formatUSD(totalGross)}</div>
+                <p className="text-xs text-muted-foreground">{allProperties.length} tokenized properties @ market price</p>
+                {onChainFmv !== totalGross && (
+                  <p className="text-xs text-green-400">FMV basis: {formatUSD(onChainFmv)} ({onChainFmv > totalGross ? '+' : ''}{formatUSD(onChainFmv - totalGross)})</p>
                 )}
               </CardContent>
             </Card>
