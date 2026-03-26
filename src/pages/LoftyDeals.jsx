@@ -20,7 +20,53 @@ const itemVariants = {
   visible: { y: 0, opacity: 1, transition: { type: 'spring' } },
 };
 
+const NAV_PER_TOKEN_OVERRIDES = {
+    // ULD listing page shows NAV per Token = $52.92; LoftyAssist tokenValue currently returns $64.37.
+    // Treat the listing NAV as authoritative for NAV-labeled UI until backend ingestion is corrected.
+    'Universal Lending DAO (ULD), Sheridan, Wyoming 82801': 52.92,
+};
+
+const normalizeAlphaDeal = (deal) => {
+    const navOverride = NAV_PER_TOKEN_OVERRIDES[deal.address];
+    if (navOverride == null) return deal;
+    return {
+        ...deal,
+        nav_per_token: navOverride,
+        navSource: 'listing-nav-override',
+    };
+};
+
 // Property image URL helper - uses property_id or address-based URL
+const buildAvmLookup = (rows = []) => {
+    const map = {};
+    for (const row of rows) {
+        const totalTokens = row.tokens_outstanding || null;
+        const avmPerToken = row.avm != null && totalTokens ? row.avm / totalTokens : null;
+        map[row.property_id] = {
+            ...row,
+            avmPerToken,
+        };
+    }
+    return map;
+};
+
+const mergeAlphaDealsWithAvm = (deals = [], avmLookup = {}) => {
+    return deals.map((deal) => {
+        const avm = avmLookup[deal.property_id];
+        if (!avm) return normalizeAlphaDeal(deal);
+
+        return normalizeAlphaDeal({
+            ...deal,
+            nav_per_token: avm.avmPerToken ?? deal.nav_per_token,
+            avm: avm.avm,
+            market_cap: avm.market_cap,
+            avmSource: avm.avm_source || deal.avmSource,
+            avmCorrected: avm.avm_corrected || false,
+            dataFetchDate: avm.data_fetch_date || null,
+        });
+    });
+};
+
 const getPropertyImage = (deal) => {
     // Use image_url from Compass Yield if it exists and is not blocked
     if (deal.image_url && deal.image_url.includes('lofty.ai')) {
@@ -35,6 +81,7 @@ const getPropertyImage = (deal) => {
 };
 
 const AlphaCard = ({ deal }) => {
+    deal = normalizeAlphaDeal(deal);
     const navigate = useNavigate();
     const { toast } = useToast();
     const [isDraftOpen, setIsDraftOpen] = useState(false);
@@ -133,6 +180,16 @@ const AlphaCard = ({ deal }) => {
                         {deal.cap_rate && (
                             <div className="text-xs text-muted-foreground mt-1">
                                 Cap: {(deal.cap_rate * 100).toFixed(1)}%
+                            </div>
+                        )}
+                        {deal.navSource === 'listing-nav-override' && (
+                            <div className="text-[10px] text-blue-400 mt-1">
+                                NAV synced to Lofty listing page
+                            </div>
+                        )}
+                        {deal.avmSource && deal.navSource !== 'listing-nav-override' && (
+                            <div className="text-[10px] text-blue-400 mt-1">
+                                AVM source: {deal.avmCorrected ? 'corrected ' : ''}{deal.avmSource}
                             </div>
                         )}
                     </div>
@@ -384,7 +441,7 @@ const LoftyDeals = () => {
                     setCashflowDeals(cashflowData || []);
                 }
 
-                setAlphaDeals(alphaData || []);
+                setAlphaDeals(mergeAlphaDealsWithAvm(alphaData || [], avmLookup));
             } catch (err) {
                 setError(err.message);
             } finally {

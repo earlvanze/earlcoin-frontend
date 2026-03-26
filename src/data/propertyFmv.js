@@ -104,6 +104,16 @@ export const propertyFmv = {
     notes: '3BR/1BA, 1,402 sqft, built 1962. Tiffin OH market flat.',
   },
 
+  // 3139 West Blvd, Cleveland, OH 44111 — Single family, 4,486 tokens
+  // LoftyAssist shows tokenValue/totalInvestment of $243,830.77 with no oraclePrice/AVM available.
+  // Added so the property has explicit FMV metadata instead of appearing missing in the UI.
+  '3139 West Blvd, Cleveland, OH 44111': {
+    fmv: 243831,
+    source: 'LoftyAssist totalInvestment fallback (no oraclePrice/AVM available)',
+    date: '2026-03-26',
+    notes: 'Explicit FMV metadata placeholder until a separate AVM/comps-based override is available.',
+  },
+
   // ─── Not in LoftyAssist (pre-tokenization / DAO-owned) ────────────────────
 
   // 1 Coolwood Dr, Little Rock, AR — Condo complex, Coolwood DAO tokens

@@ -1,5 +1,4 @@
 import React from 'react';
-import { getFmvDiscount } from '@/data/propertyFmv';
     import { motion } from 'framer-motion';
     import PageTitle from '@/components/PageTitle';
     import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';

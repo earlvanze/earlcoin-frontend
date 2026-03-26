@@ -1,4 +1,4 @@
-import { getFmvPerToken } from '@/data/propertyFmv';
+import { supabase } from '@/lib/customSupabaseClient';
 import { useState, useEffect } from 'react';
 import { 
   WALLETS, 
@@ -30,6 +30,45 @@ async function fetchLoftyProperties() {
   const res = await fetch(LOFTY_API);
   if (!res.ok) throw new Error(`LoftyAssist error: ${res.status}`);
   return res.json();
+}
+
+async function fetchPortfolioAvmRows() {
+  const { data, error } = await supabase
+    .from('lofty_portfolio_avm')
+    .select('property_id, address, avm, tokens_outstanding, total_investment, market_cap, avm_corrected, avm_source, data_fetch_date');
+
+  if (error) throw new Error(`Supabase AVM error: ${error.message}`);
+  return data || [];
+}
+
+function buildAvmLookup(avmRows) {
+  const byAddress = {};
+  const byPropertyId = {};
+
+  for (const row of avmRows) {
+    const totalTokens = row.tokens_outstanding || null;
+    const fallbackTokens = totalTokens && totalTokens > 0 ? totalTokens : null;
+    const avmPerToken = row.avm != null && fallbackTokens ? row.avm / fallbackTokens : null;
+    const marketCapPerToken = row.market_cap != null && fallbackTokens ? row.market_cap / fallbackTokens : null;
+    const entry = {
+      ...row,
+      avmPerToken,
+      marketCapPerToken,
+    };
+
+    if (row.address) byAddress[row.address] = entry;
+    if (row.property_id) byPropertyId[row.property_id] = entry;
+  }
+
+  return { byAddress, byPropertyId };
+}
+
+function getAvmPerToken(avmLookup, address, propertyId, totalTokens) {
+  const entry = (propertyId && avmLookup.byPropertyId[propertyId]) || avmLookup.byAddress[address];
+  if (!entry) return null;
+  if (entry.avmPerToken != null) return entry.avmPerToken;
+  if (entry.avm != null && totalTokens > 0) return entry.avm / totalTokens;
+  return null;
 }
 
 async function fetchAssetMetadata(assetId) {
@@ -65,6 +104,8 @@ function buildPropertyLookup(loftyData) {
       totalTokens: p.tokens,
       totalLoans: item.totalLoans || 0,
       listingStatus: p.listingStatus,
+      propertyId: p.id || p.slug || null,
+      assetId: p.assetId,
     };
     lookup[p.assetId] = entry;
     if (p.newAssetId) lookup[p.newAssetId] = entry;
@@ -84,14 +125,16 @@ export function usePortfolioData() {
     async function load() {
       try {
         // Fetch assets from all wallets
-        const [w1Assets, treasuryAssets, govAdminAssets, loftyRaw] = await Promise.all([
+        const [w1Assets, treasuryAssets, govAdminAssets, loftyRaw, avmRows] = await Promise.all([
           fetchAllAssets(WALLETS.W1),
           fetchAllAssets(WALLETS.TREASURY),
           fetchAllAssets(WALLETS.GOV_ADMIN).catch(() => []), // May not exist yet
           fetchLoftyProperties(),
+          fetchPortfolioAvmRows(),
         ]);
 
         const lookup = buildPropertyLookup(loftyRaw);
+        const avmLookup = buildAvmLookup(avmRows);
         const allAssets = [
           ...w1Assets.map(a => ({ ...a, wallet: 'W1' })),
           ...treasuryAssets.map(a => ({ ...a, wallet: 'Treasury' })),
@@ -99,14 +142,21 @@ export function usePortfolioData() {
         ];
 
         const properties = [];
-        let coolwoodTokens = 0;
+        let coolwoodTreasuryTokens = 0;
+        let coolwoodEscrowTokens = 0;
         let solarTreasuryTokens = 0;
         let solarEscrowTokens = 0;
 
         for (const asset of allAssets) {
-          // Track Coolwood tokens
+          // Track Coolwood tokens separately by wallet
+          // W1/TREASURY = DAO equity
+          // GOV_ADMIN = escrow/collateral (NOT DAO equity)
           if (asset.assetId === COOLWOOD_ASA) {
-            coolwoodTokens += asset.amount;
+            if (asset.wallet === 'GovAdmin') {
+              coolwoodEscrowTokens += asset.amount;
+            } else {
+              coolwoodTreasuryTokens += asset.amount;
+            }
             continue;
           }
           
@@ -128,7 +178,7 @@ export function usePortfolioData() {
             if (existing) {
               existing.tokens += asset.amount;
               existing.value = existing.tokens * existing.lpPrice;
-              existing.fmv = existing.tokens * (getFmvPerToken(existing.address, existing.totalTokens) || existing.tokenValue);
+              existing.fmv = existing.tokens * (getAvmPerToken(avmLookup, existing.address, existing.propertyId, existing.totalTokens) || existing.tokenValue);
             } else {
               properties.push({
                 address: prop.address,
@@ -140,8 +190,11 @@ export function usePortfolioData() {
                 totalTokens: prop.totalTokens,
                 totalLoans: prop.totalLoans,
                 value: asset.amount * prop.lpPrice,
-                fmv: asset.amount * (getFmvPerToken(prop.address, prop.totalTokens) || prop.tokenValue),
+                fmv: asset.amount * (getAvmPerToken(avmLookup, prop.address, prop.propertyId, prop.totalTokens) || prop.tokenValue),
                 capRate: prop.capRate,
+                propertyId: prop.propertyId,
+                avmSource: avmLookup.byAddress[prop.address]?.avm_source || avmLookup.byPropertyId[prop.propertyId]?.avm_source || null,
+                avmCorrected: avmLookup.byAddress[prop.address]?.avm_corrected || avmLookup.byPropertyId[prop.propertyId]?.avm_corrected || false,
                 coc: prop.coc,  // Cash-on-cash (actual yield)
                 lpApy7d: prop.lpApy7d,  // LP trading APY (reference only)
                 monthlyRent: prop.monthlyRent,
@@ -191,6 +244,7 @@ export function usePortfolioData() {
 
         properties.sort((a, b) => b.value - a.value);
 
+        const coolwoodTokens = coolwoodTreasuryTokens;
         const coolwood = coolwoodTokens > 0 ? {
           address: '1 Coolwood Dr, Little Rock, AR 72202',
           state: 'AR',
@@ -264,6 +318,7 @@ export function usePortfolioData() {
             propertyCount: properties.length + (coolwood ? 1 : 0),
             stateCount: Object.keys(stateValues).length,
             coolwoodTokens,
+            coolwoodEscrowTokens,
             topCoc,  // Renamed from topApy
             cryptoAssets,
           });
