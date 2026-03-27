@@ -108,6 +108,56 @@ const normalizeCashflowDeal = (item) => {
     };
 };
 
+
+const normalizeAddressLookupKey = (value) => {
+    if (!value) return '';
+    const [street = '', city = ''] = String(value)
+        .split(',')
+        .map((part) => part.trim())
+        .slice(0, 2);
+
+    return `${street} ${city}`
+        .toLowerCase()
+        .replace(/\./g, '')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+};
+
+const buildLoftyPropertyLookup = (items = []) => {
+    const byAddressKey = {};
+
+    for (const item of items) {
+        const p = item?.property || {};
+        const key = normalizeAddressLookupKey(p.address);
+        if (!key) continue;
+
+        byAddressKey[key] = {
+            property_id: p.id || p.slug || null,
+            slug: p.slug || null,
+            address: p.address || null,
+        };
+    }
+
+    return byAddressKey;
+};
+
+const attachLoftyPropertyMeta = (items = [], loftyLookup = {}) => {
+    return items.map((item) => {
+        const lookupValue = item.address || item.scenario || '';
+        const loftyMatch = loftyLookup[normalizeAddressLookupKey(lookupValue)];
+        if (!loftyMatch) return item;
+
+        return {
+            ...item,
+            property_id: item.property_id || loftyMatch.property_id,
+            slug: item.slug || loftyMatch.slug,
+            lofty_address: loftyMatch.address,
+        };
+    });
+};
+
+
 const AlphaCard = ({ deal }) => {
     deal = normalizeAlphaDeal(deal);
     const navigate = useNavigate();
@@ -466,16 +516,15 @@ const LoftyDeals = () => {
                     .from('lofty_lp_strategy')
                     .select('*')
                     .select('*');
-                
-                if (!strategyErr) {
-                    setStrategyData((strategyData || []).sort((a, b) => getBestStrategyReturn(b) - getBestStrategyReturn(a)).slice(0, 20));
-                }
 
-                // Fetch live cashflow opportunities from LoftyAssist (CoC-based, not alpha-table cap rates)
+                // Fetch live Lofty property metadata once so all tabs can resolve property thumbnails
+                let loftyPropertyLookup = {};
                 try {
                     const cashflowRes = await fetch(LOFTY_API);
                     if (!cashflowRes.ok) throw new Error(`LoftyAssist error: ${cashflowRes.status}`);
                     const cashflowRaw = await cashflowRes.json();
+                    loftyPropertyLookup = buildLoftyPropertyLookup(cashflowRaw || []);
+
                     const liveCashflowDeals = (cashflowRaw || [])
                         .map(normalizeCashflowDeal)
                         .filter((deal) => deal.listingStatus === 'Active' && typeof deal.coc === 'number' && deal.coc > 0)
@@ -487,7 +536,13 @@ const LoftyDeals = () => {
                     setCashflowDeals([]);
                 }
 
-                setAlphaDeals(mergeAlphaDealsWithAvm((alphaData || []).slice(0, 20), avmLookup));
+                const enrichedAlphaDeals = attachLoftyPropertyMeta((alphaData || []).slice(0, 20), loftyPropertyLookup);
+                setAlphaDeals(mergeAlphaDealsWithAvm(enrichedAlphaDeals, avmLookup));
+
+                if (!strategyErr) {
+                    const enrichedStrategyData = attachLoftyPropertyMeta(strategyData || [], loftyPropertyLookup);
+                    setStrategyData(enrichedStrategyData.sort((a, b) => getBestStrategyReturn(b) - getBestStrategyReturn(a)).slice(0, 20));
+                }
             } catch (err) {
                 setError(err.message);
             } finally {
