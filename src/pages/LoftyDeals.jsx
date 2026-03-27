@@ -131,7 +131,7 @@ const AlphaCard = ({ deal }) => {
                         {!imgError ? (
                             <img 
                                 src={getPropertyImage(deal)}
-                                alt={displayTitle}
+                                alt={deal.address}
                                 className="w-full h-full object-cover"
                                 onError={() => setImgError(true)}
                             />
@@ -261,7 +261,7 @@ const StrategyCard = ({ deal }) => {
                         {!imgError ? (
                             <img 
                                 src={getPropertyImage(deal)}
-                                alt={displayTitle}
+                                alt={deal.address}
                                 className="w-full h-full object-cover"
                                 onError={() => setImgError(true)}
                             />
@@ -352,7 +352,7 @@ const CashflowCard = ({ deal }) => {
                         {!imgError ? (
                             <img 
                                 src={getPropertyImage(deal)}
-                                alt={displayTitle}
+                                alt={deal.address}
                                 className="w-full h-full object-cover"
                                 onError={() => setImgError(true)}
                             />
