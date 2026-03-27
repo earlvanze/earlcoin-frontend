@@ -131,7 +131,7 @@ const AlphaCard = ({ deal }) => {
                         {!imgError ? (
                             <img 
                                 src={getPropertyImage(deal)}
-                                alt={deal.address}
+                                alt={displayTitle}
                                 className="w-full h-full object-cover"
                                 onError={() => setImgError(true)}
                             />
@@ -231,6 +231,8 @@ const StrategyCard = ({ deal }) => {
     const baseReturn = deal.base_return || 0;
     const hybridReturn = deal.hybrid_return || 0;
     const [imgError, setImgError] = useState(false);
+    const displayTitle = deal.address || deal.scenario || 'Unknown property';
+    const displayLocation = [deal.city, deal.state].filter(Boolean).join(', ');
     
     const loftyUrl = deal.property_id ? `https://www.lofty.ai/property/${deal.property_id}` : null;
     
@@ -259,7 +261,7 @@ const StrategyCard = ({ deal }) => {
                         {!imgError ? (
                             <img 
                                 src={getPropertyImage(deal)}
-                                alt={deal.address}
+                                alt={displayTitle}
                                 className="w-full h-full object-cover"
                                 onError={() => setImgError(true)}
                             />
@@ -272,8 +274,8 @@ const StrategyCard = ({ deal }) => {
                     <div className="flex-1 p-2.5 min-w-0">
                         <div className="flex justify-between items-start gap-1">
                             <div className="min-w-0">
-                                <h3 className="font-medium text-xs truncate">{deal.address}</h3>
-                                <p className="text-[10px] text-muted-foreground">{deal.city}, {deal.state}</p>
+                                <h3 className="font-medium text-xs truncate">{displayTitle}</h3>
+                                {displayLocation && <p className="text-[10px] text-muted-foreground">{displayLocation}</p>}
                             </div>
                             <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0 ${getWinnerBadge(winner)}`}>
                                 {winner}
@@ -350,7 +352,7 @@ const CashflowCard = ({ deal }) => {
                         {!imgError ? (
                             <img 
                                 src={getPropertyImage(deal)}
-                                alt={deal.address}
+                                alt={displayTitle}
                                 className="w-full h-full object-cover"
                                 onError={() => setImgError(true)}
                             />
@@ -361,8 +363,8 @@ const CashflowCard = ({ deal }) => {
                         )}
                     </div>
                     <div className="flex-1 p-2.5 min-w-0">
-                        <h3 className="font-medium text-xs truncate">{deal.address}</h3>
-                        <p className="text-[10px] text-muted-foreground">{deal.city}, {deal.state}</p>
+                        <h3 className="font-medium text-xs truncate">{displayTitle}</h3>
+                        {displayLocation && <p className="text-[10px] text-muted-foreground">{displayLocation}</p>}
                         
                         <div className="flex items-center gap-2 mt-2">
                             <Percent className="h-4 w-4 text-green-400" />
