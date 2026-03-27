@@ -68,17 +68,17 @@ const mergeAlphaDealsWithAvm = (deals = [], avmLookup = {}) => {
 };
 
 const getPropertyImage = (deal) => {
-    // Use image_url from Compass Yield if it exists and is not blocked
-    if (deal.image_url && deal.image_url.includes('lofty.ai')) {
+    // If a trusted direct image URL exists, use it first
+    if (deal.image_url && typeof deal.image_url === 'string' && deal.image_url.startsWith('https://')) {
         return deal.image_url;
     }
-    // Construct URL from property_id (format: 01FNSMTASFCP7DTAJENQ0HMAME)
-    if (deal.property_id) {
-        return `https://images.lofty.ai/images/${deal.property_id}/002.webp`;
-    }
-    // Fallback to generic house image
-    return 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=200&q=80';
+    // Some tables have Lofty property IDs, others only have slug/address metadata.
+    // Fall back to a stable generic thumbnail instead of broken Lofty image URLs.
+    return 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=400&q=80&auto=format&fit=crop';
 };
+
+const getDealTitle = (deal) => deal.address || deal.scenario || 'Unknown property';
+const getDealLocation = (deal) => [deal.city, deal.state].filter(Boolean).join(', ');
 
 const AlphaCard = ({ deal }) => {
     deal = normalizeAlphaDeal(deal);
@@ -231,8 +231,8 @@ const StrategyCard = ({ deal }) => {
     const baseReturn = deal.base_return || 0;
     const hybridReturn = deal.hybrid_return || 0;
     const [imgError, setImgError] = useState(false);
-    const displayTitle = deal.address || deal.scenario || 'Unknown property';
-    const displayLocation = [deal.city, deal.state].filter(Boolean).join(', ');
+    const displayTitle = getDealTitle(deal);
+    const displayLocation = getDealLocation(deal);
     
     const loftyUrl = deal.property_id ? `https://www.lofty.ai/property/${deal.property_id}` : null;
     
@@ -320,6 +320,8 @@ const CashflowCard = ({ deal }) => {
     const navigate = useNavigate();
     const { toast } = useToast();
     const [imgError, setImgError] = useState(false);
+    const displayTitle = getDealTitle(deal);
+    const displayLocation = getDealLocation(deal);
     
     const capRate = deal.cap_rate ? (deal.cap_rate * 100).toFixed(1) : '—';
     const coc = deal.coc ? (deal.coc * 100).toFixed(1) : '—';
@@ -417,7 +419,8 @@ const LoftyDeals = () => {
                     .from('lofty_alpha_opportunities')
                     .select('*')
                     .not('proposal_rank', 'is', null)
-                    .order('proposal_rank', { ascending: true });
+                    .order('proposal_rank', { ascending: true })
+                    .limit(20);
                 
                 if (alphaErr) throw alphaErr;
 
@@ -434,10 +437,11 @@ const LoftyDeals = () => {
                 const { data: strategyData, error: strategyErr } = await supabase
                     .from('lofty_lp_strategy')
                     .select('*')
-                    .order('scenario', { ascending: true });
+                    .order('scenario', { ascending: true })
+                    .limit(20);
                 
                 if (!strategyErr) {
-                    setStrategyData(strategyData || []);
+                    setStrategyData((strategyData || []).slice(0, 20));
                 }
 
                 // Fetch cashflow opportunities (high cap rate, ordered by cap_rate)
@@ -449,10 +453,10 @@ const LoftyDeals = () => {
                     .limit(20);
                 
                 if (!cashflowErr) {
-                    setCashflowDeals(cashflowData || []);
+                    setCashflowDeals((cashflowData || []).slice(0, 20));
                 }
 
-                setAlphaDeals(mergeAlphaDealsWithAvm(alphaData || [], avmLookup));
+                setAlphaDeals(mergeAlphaDealsWithAvm((alphaData || []).slice(0, 20), avmLookup));
             } catch (err) {
                 setError(err.message);
             } finally {
