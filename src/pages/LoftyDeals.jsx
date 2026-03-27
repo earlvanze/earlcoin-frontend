@@ -80,6 +80,12 @@ const getPropertyImage = (deal) => {
 const getDealTitle = (deal) => deal.address || deal.scenario || 'Unknown property';
 const getDealLocation = (deal) => [deal.city, deal.state].filter(Boolean).join(', ');
 
+const getBestStrategyReturn = (deal) => {
+    const values = [deal.quote_return, deal.base_return, deal.hybrid_return]
+        .filter((v) => typeof v === 'number' && !Number.isNaN(v));
+    return values.length ? Math.max(...values) : Number.NEGATIVE_INFINITY;
+};
+
 const AlphaCard = ({ deal }) => {
     deal = normalizeAlphaDeal(deal);
     const navigate = useNavigate();
@@ -437,11 +443,10 @@ const LoftyDeals = () => {
                 const { data: strategyData, error: strategyErr } = await supabase
                     .from('lofty_lp_strategy')
                     .select('*')
-                    .order('scenario', { ascending: true })
-                    .limit(20);
+                    .select('*');
                 
                 if (!strategyErr) {
-                    setStrategyData((strategyData || []).slice(0, 20));
+                    setStrategyData((strategyData || []).sort((a, b) => getBestStrategyReturn(b) - getBestStrategyReturn(a)).slice(0, 20));
                 }
 
                 // Fetch cashflow opportunities (high cap rate, ordered by cap_rate)
