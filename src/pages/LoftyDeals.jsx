@@ -69,12 +69,15 @@ const mergeAlphaDealsWithAvm = (deals = [], avmLookup = {}) => {
 };
 
 const getPropertyImage = (deal) => {
-    // If a trusted direct image URL exists, use it first
+    if (deal.property_id) {
+        return `https://images.lofty.ai/images/${deal.property_id}/thumb-min.webp`;
+    }
+
+    // If a trusted direct image URL exists, use it as a fallback.
     if (deal.image_url && typeof deal.image_url === 'string' && deal.image_url.startsWith('https://')) {
         return deal.image_url;
     }
-    // Some tables have Lofty property IDs, others only have slug/address metadata.
-    // Fall back to a stable generic thumbnail instead of broken Lofty image URLs.
+
     return 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=400&q=80&auto=format&fit=crop';
 };
 

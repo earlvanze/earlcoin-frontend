@@ -230,7 +230,6 @@ import React from 'react';
                           <p className="text-xs text-muted-foreground">
                             {(asset.tokens || 0).toLocaleString()} tokens @ ${asset.lpPrice?.toFixed(2) || asset.tokenValue?.toFixed(2) || '?'}
                             {asset.wallet && <span className="ml-2 text-purple-400/60">[{asset.wallet}]</span>}
-                            {asset.isCoolwood && <span className="text-yellow-400 ml-2">⚠ ${(asset.mortgage/1000).toFixed(0)}k mortgage</span>}
                           </p>
                         </div>
                       </div>
@@ -377,10 +376,12 @@ import React from 'react';
                             <p className="text-xs text-muted-foreground">0% LTV</p></>
                       }
                     </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Member Capital</p>
-                      <p className="text-lg font-bold">{asset.memberCapital != null ? formatUSD(asset.memberCapital) : <span className="text-yellow-400 text-sm">TBD</span>}</p>
-                    </div>
+                    {asset.memberCapital != null && (
+                      <div>
+                        <p className="text-xs text-muted-foreground">Member Capital</p>
+                        <p className="text-lg font-bold">{formatUSD(asset.memberCapital)}</p>
+                      </div>
+                    )}
                     <div>
                       <p className="text-xs text-muted-foreground">
                         {asset.ownershipPct != null ? `Your Equity (${asset.ownershipPct}%)` : 'Your Equity'}
