@@ -419,6 +419,15 @@ const LoftyDeals = () => {
                 
                 if (alphaErr) throw alphaErr;
 
+                // Fetch AVM/FMVs for alpha deal enrichment
+                const { data: avmRows, error: avmErr } = await supabase
+                    .from('lofty_portfolio_avm')
+                    .select('property_id, avm, tokens_outstanding, market_cap, avm_source, avm_corrected, data_fetch_date');
+
+                if (avmErr) throw avmErr;
+
+                const avmLookup = buildAvmLookup(avmRows || []);
+
                 // Fetch LP strategy backtest
                 const { data: strategyData, error: strategyErr } = await supabase
                     .from('lofty_lp_strategy')
