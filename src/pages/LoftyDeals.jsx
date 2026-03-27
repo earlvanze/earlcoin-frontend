@@ -9,6 +9,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { TrendingUp, DollarSign, Bot, FilePlus, Loader2, AlertTriangle, ExternalLink, ChevronDown, ChevronUp, Target, BarChart3, Sparkles, Activity, PieChart, Percent } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
+import { LOFTY_API } from '@/lib/wallets';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -84,6 +85,24 @@ const getBestStrategyReturn = (deal) => {
     const values = [deal.quote_return, deal.base_return, deal.hybrid_return]
         .filter((v) => typeof v === 'number' && !Number.isNaN(v));
     return values.length ? Math.max(...values) : Number.NEGATIVE_INFINITY;
+};
+
+const normalizeCashflowDeal = (item) => {
+    const p = item?.property || {};
+    return {
+        id: p.id || p.slug || p.assetId,
+        property_id: p.id || null,
+        assetId: p.assetId || p.newAssetId || null,
+        address: p.address || 'Unknown property',
+        slug: p.slug || null,
+        city: p.market || p.city || null,
+        state: p.state || null,
+        market_price: p.tokenValue ?? null,
+        cap_rate: typeof p.cap_rate === 'number' ? p.cap_rate / 100 : null,
+        coc: typeof p.coc === 'number' ? p.coc / 100 : null,
+        listingStatus: p.listingStatus || null,
+        source: 'loftyassist',
+    };
 };
 
 const AlphaCard = ({ deal }) => {
@@ -376,10 +395,10 @@ const CashflowCard = ({ deal }) => {
                         
                         <div className="flex items-center gap-2 mt-2">
                             <Percent className="h-4 w-4 text-green-400" />
-                            <span className="text-lg font-bold text-green-400">
-                                {capRate}%
+                            <span className={`text-lg font-bold ${getCocColor(deal.coc || 0)}`}>
+                                {coc}%
                             </span>
-                            <span className="text-xs text-muted-foreground">Cap Rate</span>
+                            <span className="text-xs text-muted-foreground">CoC</span>
                         </div>
                         
                         <div className="flex gap-3 mt-1.5 text-[10px]">
@@ -387,10 +406,10 @@ const CashflowCard = ({ deal }) => {
                                 <span className="text-muted-foreground">Price:</span>
                                 <span className="ml-1 font-medium">${deal.market_price?.toFixed(2) || '—'}</span>
                             </div>
-                            {coc !== '—' && (
+                            {capRate !== '—' && (
                                 <div>
-                                    <span className="text-muted-foreground">CoC:</span>
-                                    <span className="ml-1 font-medium">{coc}%</span>
+                                    <span className="text-muted-foreground">Cap:</span>
+                                    <span className="ml-1 font-medium">{capRate}%</span>
                                 </div>
                             )}
                         </div>
@@ -449,16 +468,20 @@ const LoftyDeals = () => {
                     setStrategyData((strategyData || []).sort((a, b) => getBestStrategyReturn(b) - getBestStrategyReturn(a)).slice(0, 20));
                 }
 
-                // Fetch cashflow opportunities (high cap rate, ordered by cap_rate)
-                const { data: cashflowData, error: cashflowErr } = await supabase
-                    .from('lofty_alpha_opportunities')
-                    .select('*')
-                    .not('cap_rate', 'is', null)
-                    .order('cap_rate', { ascending: false })
-                    .limit(20);
-                
-                if (!cashflowErr) {
-                    setCashflowDeals((cashflowData || []).slice(0, 20));
+                // Fetch live cashflow opportunities from LoftyAssist (CoC-based, not alpha-table cap rates)
+                try {
+                    const cashflowRes = await fetch(LOFTY_API);
+                    if (!cashflowRes.ok) throw new Error(`LoftyAssist error: ${cashflowRes.status}`);
+                    const cashflowRaw = await cashflowRes.json();
+                    const liveCashflowDeals = (cashflowRaw || [])
+                        .map(normalizeCashflowDeal)
+                        .filter((deal) => deal.listingStatus === 'Active' && typeof deal.coc === 'number' && deal.coc > 0)
+                        .sort((a, b) => (b.coc || 0) - (a.coc || 0))
+                        .slice(0, 20);
+                    setCashflowDeals(liveCashflowDeals);
+                } catch (cashflowErr) {
+                    console.error('Cashflow fetch error:', cashflowErr);
+                    setCashflowDeals([]);
                 }
 
                 setAlphaDeals(mergeAlphaDealsWithAvm((alphaData || []).slice(0, 20), avmLookup));
@@ -575,8 +598,8 @@ const LoftyDeals = () => {
                   ) : (
                       <>
                       <div className="mb-3 p-3 bg-secondary/30 rounded-lg">
-                          <h3 className="font-semibold text-sm">High Cash-on-Cash Return Properties</h3>
-                          <p className="text-xs text-muted-foreground">Properties with CoC &gt; 8%, ordered by cash yield</p>
+                          <h3 className="font-semibold text-sm">Highest Live Cash-on-Cash Properties</h3>
+                          <p className="text-xs text-muted-foreground">Live LoftyAssist CoC rankings, ordered by cash-on-cash return</p>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                           {cashflowDeals.map(deal => <CashflowCard key={deal.property_id || deal.id} deal={deal} />)}
