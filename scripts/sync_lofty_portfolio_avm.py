@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 import json
+import os
 from pathlib import Path
 import requests
 
-SUPABASE_URL = 'https://aeaufjjeimtkiixdmrtq.supabase.co'
-SERVICE_ROLE_KEY = '***REMOVED_SERVICE_ROLE_KEY***'
+SUPABASE_URL = os.environ.get('EARLCOIN_SUPABASE_URL', 'https://aeaufjjeimtkiixdmrtq.supabase.co')
+SERVICE_ROLE_KEY = os.environ.get('EARLCOIN_SUPABASE_SERVICE_ROLE_KEY')
+if not SERVICE_ROLE_KEY:
+    raise RuntimeError('Missing EARLCOIN_SUPABASE_SERVICE_ROLE_KEY')
 DATA_PATH = Path('/home/umbrel/.openclaw/workspace-investment-advisor/data/portfolio_avm_merged.json')
 
 headers = {
