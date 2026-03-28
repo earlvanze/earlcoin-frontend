@@ -256,8 +256,8 @@ import React from 'react';
                           <div className="text-right min-w-[120px]">
                             <p className="text-sm font-medium text-green-400">{formatUSD(asset.fmv)} FMV</p>
                             {(() => {
-                              const disc = asset.lpPrice && asset.totalTokens > 0
-                                ? ((asset.lpPrice * asset.totalTokens - asset.fmv) / asset.fmv * 100)
+                              const disc = asset.fmv > 0
+                                ? ((asset.value - asset.fmv) / asset.fmv * 100)
                                 : null;
                               if (disc == null) return null;
                               return <p className={`text-xs font-medium ${disc < 0 ? 'text-green-400' : disc > 0 ? 'text-red-400' : 'text-muted-foreground'}`}>

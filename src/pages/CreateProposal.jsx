@@ -29,6 +29,40 @@ const generateFromDeal = (params, portfolioData) => {
     const investmentAmount = (parseInt(shares) * parseFloat(tokenPrice)).toLocaleString();
     const avgCapRate = portfolioData?.properties?.reduce((sum, p) => sum + (p.capRate || 0), 0) / (portfolioData?.properties?.length || 1) || 5.5;
 
+
+    if (type === 'lp') {
+        const winner = params.get('winner') || params.get('strategy_type') || 'Base LP';
+        const quoteReturn = params.get('quote_return_pct') || '0';
+        const baseReturn = params.get('base_return_pct') || '0';
+        const hybridReturn = params.get('hybrid_return_pct') || '0';
+        const proposalDraft = params.get('proposal_draft') || '';
+
+        return {
+            title: `LP Strategy: ${winner} for ${address}`,
+            description: proposalDraft || `## Summary
+Proposal to pursue **${winner}** positioning for **${address}**, ${city}, ${state}.
+
+## Strategy Comparison
+- Quote LP: ${parseFloat(quoteReturn || '0').toFixed(1)}%
+- Base LP: ${parseFloat(baseReturn || '0').toFixed(1)}%
+- Hybrid LP: ${parseFloat(hybridReturn || '0').toFixed(1)}%
+
+## Recommendation
+${winner} is currently the preferred LP strategy for this property.
+
+## Vote Options
+Please vote on whether to follow this LP strategy recommendation.`,
+            options: [
+                { id: uuidv4(), text: 'Approve Strategy' },
+                { id: uuidv4(), text: 'Reject' },
+                { id: uuidv4(), text: 'Defer - Request More Analysis' }
+            ],
+            voteDuration: '168',
+            propertyId,
+            dealType: 'lp'
+        };
+    }
+
     if (type === 'equity') {
         const equityPotential = params.get('equity_potential') || '0';
         const navUpside = params.get('nav_upside') || '0';

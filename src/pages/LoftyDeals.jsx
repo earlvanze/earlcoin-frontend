@@ -10,6 +10,7 @@ import { TrendingUp, DollarSign, Bot, FilePlus, Loader2, AlertTriangle, External
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
 import { LOFTY_API } from '@/lib/wallets';
+import { MARKETPLACE_API, attachLoftyPropertyMeta, buildLoftyPropertyLookup, buildMarketplaceIdSet, filterTradableDeals, normalizeCashflowDeal } from '@/lib/loftyDeals';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -89,74 +90,6 @@ const getBestStrategyReturn = (deal) => {
         .filter((v) => typeof v === 'number' && !Number.isNaN(v));
     return values.length ? Math.max(...values) : Number.NEGATIVE_INFINITY;
 };
-
-const normalizeCashflowDeal = (item) => {
-    const p = item?.property || {};
-    return {
-        id: p.id || p.slug || p.assetId,
-        property_id: p.id || null,
-        assetId: p.assetId || p.newAssetId || null,
-        address: p.address || 'Unknown property',
-        slug: p.slug || null,
-        city: p.market || p.city || null,
-        state: p.state || null,
-        market_price: p.tokenValue ?? null,
-        cap_rate: typeof p.cap_rate === 'number' ? p.cap_rate / 100 : null,
-        coc: typeof p.coc === 'number' ? p.coc / 100 : null,
-        listingStatus: p.listingStatus || null,
-        source: 'loftyassist',
-    };
-};
-
-
-const normalizeAddressLookupKey = (value) => {
-    if (!value) return '';
-    const [street = '', city = ''] = String(value)
-        .split(',')
-        .map((part) => part.trim())
-        .slice(0, 2);
-
-    return `${street} ${city}`
-        .toLowerCase()
-        .replace(/\./g, '')
-        .replace(/[^a-z0-9]+/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-};
-
-const buildLoftyPropertyLookup = (items = []) => {
-    const byAddressKey = {};
-
-    for (const item of items) {
-        const p = item?.property || {};
-        const key = normalizeAddressLookupKey(p.address);
-        if (!key) continue;
-
-        byAddressKey[key] = {
-            property_id: p.id || p.slug || null,
-            slug: p.slug || null,
-            address: p.address || null,
-        };
-    }
-
-    return byAddressKey;
-};
-
-const attachLoftyPropertyMeta = (items = [], loftyLookup = {}) => {
-    return items.map((item) => {
-        const lookupValue = item.address || item.scenario || '';
-        const loftyMatch = loftyLookup[normalizeAddressLookupKey(lookupValue)];
-        if (!loftyMatch) return item;
-
-        return {
-            ...item,
-            property_id: item.property_id || loftyMatch.property_id,
-            slug: item.slug || loftyMatch.slug,
-            lofty_address: loftyMatch.address,
-        };
-    });
-};
-
 
 const AlphaCard = ({ deal }) => {
     deal = normalizeAlphaDeal(deal);
@@ -304,11 +237,15 @@ const AlphaCard = ({ deal }) => {
 };
 
 const StrategyCard = ({ deal }) => {
+    const navigate = useNavigate();
+    const { toast } = useToast();
     const winner = deal.winner || 'Base LP';
     const quoteReturn = deal.quote_return || 0;
     const baseReturn = deal.base_return || 0;
     const hybridReturn = deal.hybrid_return || 0;
+    const proposalDraft = deal.proposal_draft || deal.notes || '';
     const [imgError, setImgError] = useState(false);
+    const [isDraftOpen, setIsDraftOpen] = useState(false);
     const displayTitle = getDealTitle(deal);
     const displayLocation = getDealLocation(deal);
     
@@ -331,6 +268,28 @@ const StrategyCard = ({ deal }) => {
         return val >= 0 ? 'text-green-400' : 'text-red-400';
     };
 
+    const handleCreateProposal = () => {
+        const params = new URLSearchParams({
+            type: 'lp',
+            property_id: deal.property_id || '',
+            address: deal.address || deal.scenario || '',
+            city: deal.city || '',
+            state: deal.state || '',
+            winner: winner,
+            recommendation: deal.recommendation || '',
+            strategy_type: deal.strategy_type || winner,
+            quote_return_pct: typeof quoteReturn === 'number' ? (quoteReturn * 100).toFixed(1) : '',
+            base_return_pct: typeof baseReturn === 'number' ? (baseReturn * 100).toFixed(1) : '',
+            hybrid_return_pct: typeof hybridReturn === 'number' ? (hybridReturn * 100).toFixed(1) : '',
+            proposal_draft: proposalDraft,
+        });
+        navigate(`/proposals/new?${params.toString()}`);
+        toast({
+            title: 'Creating Proposal',
+            description: `Drafting LP strategy proposal for ${deal.address || deal.scenario}`,
+        });
+    };
+
     return (
         <motion.div variants={itemVariants}>
             <Card className="overflow-hidden transition-all duration-200 hover:shadow-lg hover:border-primary/30">
@@ -347,6 +306,11 @@ const StrategyCard = ({ deal }) => {
                             <div className="w-full h-full flex items-center justify-center">
                                 <PieChart className="h-6 w-6 text-muted-foreground" />
                             </div>
+                        )}
+                        {deal.proposal_rank && (
+                            <span className="absolute top-1 left-1 bg-black/70 text-white text-xs font-bold px-1.5 py-0.5 rounded">
+                                #{deal.proposal_rank}
+                            </span>
                         )}
                     </div>
                     <div className="flex-1 p-2.5 min-w-0">
@@ -389,6 +353,29 @@ const StrategyCard = ({ deal }) => {
                         )}
                     </div>
                 </div>
+                <div className="flex items-center justify-between px-2.5 py-1.5 bg-secondary/20 border-t">
+                    <span className="text-[10px] text-muted-foreground">
+                        {deal.recommendation || 'LP strategy recommendation'}
+                    </span>
+                    <Button size="sm" onClick={handleCreateProposal} className="h-6 text-[10px] px-2 bg-gradient-to-r from-purple-600 to-indigo-600">
+                        <FilePlus className="mr-1 h-3 w-3" /> Proposal
+                    </Button>
+                </div>
+                {proposalDraft && (
+                    <Collapsible open={isDraftOpen} onOpenChange={setIsDraftOpen}>
+                        <CollapsibleTrigger asChild>
+                            <button className="w-full px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/30 transition-colors flex items-center justify-center gap-1">
+                                <span>Proposal Draft</span>
+                                {isDraftOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                            </button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                            <div className="px-3 py-2 text-xs bg-secondary/30 max-h-40 overflow-y-auto">
+                                <pre className="whitespace-pre-wrap font-sans">{proposalDraft}</pre>
+                            </div>
+                        </CollapsibleContent>
+                    </Collapsible>
+                )}
             </Card>
         </motion.div>
     );
@@ -497,8 +484,7 @@ const LoftyDeals = () => {
                     .from('lofty_alpha_opportunities')
                     .select('*')
                     .not('proposal_rank', 'is', null)
-                    .order('proposal_rank', { ascending: true })
-                    .limit(20);
+                    .order('proposal_rank', { ascending: true });
                 
                 if (alphaErr) throw alphaErr;
 
@@ -514,35 +500,54 @@ const LoftyDeals = () => {
                 // Fetch LP strategy backtest
                 const { data: strategyData, error: strategyErr } = await supabase
                     .from('lofty_lp_strategy')
-                    .select('*')
                     .select('*');
 
-                // Fetch live Lofty property metadata once so all tabs can resolve property thumbnails
-                let loftyPropertyLookup = {};
-                try {
-                    const cashflowRes = await fetch(LOFTY_API);
-                    if (!cashflowRes.ok) throw new Error(`LoftyAssist error: ${cashflowRes.status}`);
-                    const cashflowRaw = await cashflowRes.json();
-                    loftyPropertyLookup = buildLoftyPropertyLookup(cashflowRaw || []);
+                // Fetch live Lofty property metadata + marketplace whitelist once for all tabs
+                const [cashflowRes, marketplaceRes] = await Promise.all([
+                    fetch(LOFTY_API),
+                    fetch(MARKETPLACE_API),
+                ]);
 
-                    const liveCashflowDeals = (cashflowRaw || [])
-                        .map(normalizeCashflowDeal)
-                        .filter((deal) => deal.listingStatus === 'Active' && typeof deal.coc === 'number' && deal.coc > 0)
-                        .sort((a, b) => (b.coc || 0) - (a.coc || 0))
-                        .slice(0, 20);
-                    setCashflowDeals(liveCashflowDeals);
-                } catch (cashflowErr) {
-                    console.error('Cashflow fetch error:', cashflowErr);
-                    setCashflowDeals([]);
-                }
+                if (!cashflowRes.ok) throw new Error(`LoftyAssist error: ${cashflowRes.status}`);
+                if (!marketplaceRes.ok) throw new Error(`Lofty marketplace error: ${marketplaceRes.status}`);
 
-                const enrichedAlphaDeals = attachLoftyPropertyMeta((alphaData || []).slice(0, 20), loftyPropertyLookup);
+                const [cashflowRaw, marketplaceRaw] = await Promise.all([
+                    cashflowRes.json(),
+                    marketplaceRes.json(),
+                ]);
+
+                const loftyPropertyLookup = buildLoftyPropertyLookup(cashflowRaw || []);
+                const marketplaceIds = buildMarketplaceIdSet(marketplaceRaw?.data?.properties || []);
+
+                const liveCashflowDeals = filterTradableDeals(
+                    (cashflowRaw || []).map(normalizeCashflowDeal),
+                    marketplaceIds,
+                )
+                    .filter((deal) => typeof deal.coc === 'number' && deal.coc > 0)
+                    .sort((a, b) => (b.coc || 0) - (a.coc || 0))
+                    .slice(0, 20);
+                setCashflowDeals(liveCashflowDeals);
+
+                const enrichedAlphaDeals = filterTradableDeals(
+                    attachLoftyPropertyMeta(alphaData || [], loftyPropertyLookup),
+                    marketplaceIds,
+                ).slice(0, 20);
                 setAlphaDeals(mergeAlphaDealsWithAvm(enrichedAlphaDeals, avmLookup));
 
-                if (!strategyErr) {
-                    const enrichedStrategyData = attachLoftyPropertyMeta(strategyData || [], loftyPropertyLookup);
-                    setStrategyData(enrichedStrategyData.sort((a, b) => getBestStrategyReturn(b) - getBestStrategyReturn(a)).slice(0, 20));
-                }
+                if (strategyErr) throw strategyErr;
+
+                const enrichedStrategyData = filterTradableDeals(
+                    attachLoftyPropertyMeta(strategyData || [], loftyPropertyLookup),
+                    marketplaceIds,
+                )
+                    .sort((a, b) => {
+                        const rankA = typeof a.proposal_rank === 'number' ? a.proposal_rank : Number.POSITIVE_INFINITY;
+                        const rankB = typeof b.proposal_rank === 'number' ? b.proposal_rank : Number.POSITIVE_INFINITY;
+                        if (rankA !== rankB) return rankA - rankB;
+                        return getBestStrategyReturn(b) - getBestStrategyReturn(a);
+                    })
+                    .slice(0, 20);
+                setStrategyData(enrichedStrategyData);
             } catch (err) {
                 setError(err.message);
             } finally {
