@@ -102,7 +102,7 @@ import React, { useState, useEffect } from 'react';
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="walletAddress">Wallet Address</Label>
-                    <Input id="walletAddress" type="text" placeholder="Your Pera wallet address" value={walletAddress} onChange={(e) => setWalletAddress(e.target.value)} />
+                    <Input id="walletAddress" type="text" placeholder="Your Algorand wallet address" value={walletAddress} onChange={(e) => setWalletAddress(e.target.value)} />
                   </div>
                   <Button className="w-full mt-2" type="submit" disabled={loading}>
                     {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Update Profile'}

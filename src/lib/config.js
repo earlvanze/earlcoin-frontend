@@ -1,13 +1,23 @@
+const firstNonEmpty = (...values) => values.find((value) => typeof value === 'string' && value.trim().length > 0) || '';
+
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 export const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
 
-export const ALGOD_URL = import.meta.env.VITE_ALGOD_URL || 'https://testnet-api.algonode.cloud';
-export const INDEXER_URL = import.meta.env.VITE_INDEXER_URL || 'https://testnet-idx.algonode.cloud';
-export const NETWORK = import.meta.env.VITE_NETWORK || 'testnet';
+export const ALGOD_URL = firstNonEmpty(
+  import.meta.env.VITE_ALGOD_URL,
+  import.meta.env.VITE_ALGONODE_URL,
+) || 'https://mainnet-api.4160.nodely.dev';
+export const INDEXER_URL = firstNonEmpty(
+  import.meta.env.VITE_INDEXER_URL,
+  import.meta.env.VITE_ALGONODE_IDX,
+) || 'https://mainnet-idx.4160.nodely.dev';
+export const NETWORK = firstNonEmpty(import.meta.env.VITE_NETWORK) || 'mainnet';
 
-export const EARL_ASA_ID = Number(import.meta.env.VITE_EARL_ASA_ID || '756256156');
+export const EARL_ASA_ID = Number(firstNonEmpty(import.meta.env.VITE_EARL_ASA_ID) || '3497993904');
 export const VNFT_ADMIN_ADDRESS = import.meta.env.VITE_VNFT_ADMIN_ADDRESS || 'DTXJYIPBBFDMREX27RS4ZY6YN7E455ASXKCYAENM77SJIEVPWB2UZZAPMA';
-export const USDC_ASA_ID = Number(import.meta.env.VITE_USDC_ASA_ID || '10458941');
+export const USDC_ASA_ID = Number(firstNonEmpty(import.meta.env.VITE_USDC_ASA_ID) || '31566704');
+export const GOBTC_ASA_ID = Number(firstNonEmpty(import.meta.env.VITE_GOBTC_ASA_ID) || '386192725');
+export const GOBTC_DECIMALS = 8;
 export const GOV_APP_ID = Number(import.meta.env.VITE_GOV_APP_ID || '0');
 
 export const STRIPE_PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '';

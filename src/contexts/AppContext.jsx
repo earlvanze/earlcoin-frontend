@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useState, useEffect } from 'react';
 import { useToast } from "@/components/ui/use-toast";
 import { PeraWalletConnect } from '@perawallet/connect';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/lib/customSupabaseClient';
+import { getVnftAssetId } from '@/lib/algorand';
 
 const AppContext = createContext();
 
@@ -14,6 +15,7 @@ export const AppProvider = ({ children }) => {
     const [verificationStatus, setVerificationStatus] = useState('Unverified');
     const [isConnected, setIsConnected] = useState(false);
     const [accountAddress, setAccountAddress] = useState(null);
+    const [walletProvider, setWalletProvider] = useState(null);
     const [hasVerificationNft, setHasVerificationNft] = useState(false);
     const [kycVerified, setKycVerified] = useState(false);
     const [notifications, setNotifications] = useState([
@@ -27,6 +29,7 @@ export const AppProvider = ({ children }) => {
             if (accounts.length) {
                 setIsConnected(true);
                 setAccountAddress(accounts[0]);
+                setWalletProvider('pera');
             }
         }).catch(console.error);
 
@@ -35,32 +38,61 @@ export const AppProvider = ({ children }) => {
         }
     }, []);
 
-    useEffect(() => {
-        const checkKycStatus = async () => {
-            if (user) {
-                const { data, error } = await supabase
-                    .from('profiles')
-                    .select('kyc_verified')
-                    .eq('id', user.id)
-                    .single();
-                
-                if (error) console.error('Error fetching KYC status in context:', error);
-                else if (data) {
-                    setKycVerified(data.kyc_verified);
-                }
-            } else {
-                setKycVerified(false);
+    const refreshVerificationState = useCallback(async () => {
+        if (!user) {
+            setKycVerified(false);
+            setHasVerificationNft(false);
+            return { kycVerified: false, hasVerificationNft: false };
+        }
+
+        let nextKycVerified = false;
+        let nextHasVerificationNft = false;
+
+        try {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('kyc_verified')
+                .eq('id', user.id)
+                .single();
+
+            if (error) {
+                console.error('Error fetching KYC status in context:', error);
+            } else if (data) {
+                nextKycVerified = !!data.kyc_verified;
             }
-        };
-        checkKycStatus();
-        
-        const channel = supabase.channel('profiles-changes').on(
+        } catch (error) {
+            console.error('Unexpected KYC refresh failure:', error);
+        }
+
+        if (accountAddress) {
+            try {
+                const assetId = await getVnftAssetId(accountAddress);
+                nextHasVerificationNft = !!assetId;
+                if (assetId && user?.id) {
+                    localStorage.setItem(`vnft_asset_id_${user.id}`, String(assetId));
+                }
+            } catch (error) {
+                console.error('Error checking VNFT status in context:', error);
+            }
+        }
+
+        setKycVerified(nextKycVerified);
+        setHasVerificationNft(nextHasVerificationNft);
+        return { kycVerified: nextKycVerified, hasVerificationNft: nextHasVerificationNft };
+    }, [accountAddress, user]);
+
+    useEffect(() => {
+        refreshVerificationState();
+
+        if (!user) {
+            return undefined;
+        }
+
+        const channel = supabase.channel(`profiles-changes-${user.id}`).on(
             'postgres_changes',
-            { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user?.id}` },
-            (payload) => {
-              if(payload.new.kyc_verified !== undefined) {
-                  setKycVerified(payload.new.kyc_verified);
-              }
+            { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` },
+            () => {
+                refreshVerificationState();
             }
           ).subscribe();
 
@@ -68,23 +100,24 @@ export const AppProvider = ({ children }) => {
             supabase.removeChannel(channel);
           }
 
-    }, [user]);
+    }, [refreshVerificationState, user]);
 
     const handleConnect = async () => {
         try {
             const newAccounts = await peraWallet.connect();
             setIsConnected(true);
             setAccountAddress(newAccounts[0]);
+            setWalletProvider('pera');
             toast({
                 title: "Wallet Connected",
-                description: "Your Pera Wallet has been successfully connected.",
+                description: "Algorand wallet connected via WalletConnect.",
             });
         } catch (error) {
             if (error?.data?.type !== "CONNECT_MODAL_CLOSED") {
                 toast({
                     variant: "destructive",
                     title: "Connection Failed",
-                    description: "Could not connect to Pera Wallet. Please try again.",
+                    description: "Could not connect wallet. Make sure you have Pera, Defly, or another WalletConnect-compatible Algorand wallet.",
                 });
             }
         }
@@ -94,12 +127,21 @@ export const AppProvider = ({ children }) => {
         await peraWallet.disconnect();
         setIsConnected(false);
         setAccountAddress(null);
+        setWalletProvider(null);
         setHasVerificationNft(false);
         toast({
             title: "Wallet Disconnected",
-            description: "Your Pera Wallet has been disconnected.",
+            description: "Your Algorand wallet has been disconnected.",
         });
     };
+
+    const signTransactions = useCallback(async (transactionGroups) => {
+        if (!accountAddress) {
+            throw new Error('Connect an Algorand wallet before signing transactions.');
+        }
+
+        return peraWallet.signTransaction(transactionGroups, accountAddress);
+    }, [accountAddress]);
 
     const startVerification = () => {
         setVerificationStatus('Pending');
@@ -117,7 +159,7 @@ export const AppProvider = ({ children }) => {
         }, 5000);
     };
 
-    const value = {
+    const value = useMemo(() => ({
         verificationStatus,
         startVerification,
         hasVerificationNft,
@@ -126,10 +168,13 @@ export const AppProvider = ({ children }) => {
         notifications,
         isConnected,
         accountAddress,
+        walletProvider,
         handleConnect,
         handleDisconnect,
         peraWallet,
-    };
+        signTransactions,
+        refreshVerificationState,
+    }), [verificationStatus, hasVerificationNft, kycVerified, notifications, isConnected, accountAddress, walletProvider, signTransactions, refreshVerificationState]);
 
     return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 };

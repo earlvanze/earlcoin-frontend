@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/components/ui/use-toast';
-import { useAuth } from '@/contexts/AuthContext.jsx';
+import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useAppContext } from '@/contexts/AppContext';
 import { supabase } from '@/lib/customSupabaseClient';
 import { Button } from '@/components/ui/button';
@@ -11,13 +11,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { CheckCircle, Loader2, AlertTriangle, Gift } from 'lucide-react';
 import PageTitle from '@/components/PageTitle';
 import algosdk from 'algosdk';
-import { VNFT_ADMIN_ADDRESS } from '@/lib/config';
-import { hasVnft, getVnftAssetId, algodClient } from '@/lib/algorand';
+import { NETWORK, VNFT_ADMIN_ADDRESS } from '@/lib/config';
+import { getVnftAssetId, algodClient } from '@/lib/algorand';
 
 const VerificationComplete = () => {
     const { toast } = useToast();
-    const { user } = useAuth();
-    const { accountAddress, handleConnect, setHasVerificationNft, signTransactions } = useAppContext();
+    const { user, loading: authLoading } = useAuth();
+    const { accountAddress, handleConnect, setHasVerificationNft, signTransactions, refreshVerificationState } = useAppContext();
     const [status, setStatus] = useState('verifying');
     const [checkingWallet, setCheckingWallet] = useState(false);
     const [minting, setMinting] = useState(false);
@@ -25,24 +25,29 @@ const VerificationComplete = () => {
     const [claiming, setClaiming] = useState(false);
     const [nftAssetId, setNftAssetId] = useState(null);
     const [optedIn, setOptedIn] = useState(false);
-    const [profileVnftWallet, setProfileVnftWallet] = useState(null);
     const navigate = useNavigate();
     const intervalRef = useRef(null);
 
     useEffect(() => {
+        if (authLoading) {
+            return;
+        }
+
         if (!user) {
             setStatus('error');
             toast({ variant: 'destructive', title: 'Not logged in', description: 'You must be logged in to complete verification.' });
             return;
         }
 
+        let channel;
         const cleanup = () => {
             if (intervalRef.current) {
                 clearInterval(intervalRef.current);
+                intervalRef.current = null;
             }
-            const channel = supabase.channel(`kyc-verification-${user.id}`);
             if (channel) {
                 supabase.removeChannel(channel);
+                channel = null;
             }
         };
 
@@ -51,6 +56,7 @@ const VerificationComplete = () => {
             if (data?.kyc_verified) {
                 setStatus('verified');
                 cleanup();
+                await refreshVerificationState();
                 return;
             }
             const sessionId = localStorage.getItem('stripe_kyc_session_id');
@@ -62,6 +68,7 @@ const VerificationComplete = () => {
                     if (!error && syncData?.status === 'verified') {
                         setStatus('verified');
                         cleanup();
+                        refreshVerificationState();
                     }
                 } catch (e) {
                     // ignore
@@ -71,7 +78,7 @@ const VerificationComplete = () => {
 
         checkStatus();
 
-        const channel = supabase.channel(`kyc-verification-${user.id}`)
+        channel = supabase.channel(`kyc-verification-${user.id}`)
             .on(
                 'postgres_changes',
                 { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` },
@@ -79,6 +86,7 @@ const VerificationComplete = () => {
                     if (payload.new.kyc_verified === true) {
                         setStatus('verified');
                         cleanup();
+                        refreshVerificationState();
                     }
                 }
             )
@@ -97,7 +105,7 @@ const VerificationComplete = () => {
             cleanup();
             clearTimeout(timeoutId);
         };
-    }, [user, toast, status]);
+    }, [authLoading, refreshVerificationState, user, toast, status]);
 
     useEffect(() => {
         if (!user) return;
@@ -120,9 +128,6 @@ const VerificationComplete = () => {
             if (data?.vnft_asset_id) {
                 setNftAssetId(Number(data.vnft_asset_id));
             }
-            if (data?.vnft_wallet) {
-                setProfileVnftWallet(data.vnft_wallet);
-            }
         };
         loadProfileVnft();
     }, [user]);
@@ -141,6 +146,7 @@ const VerificationComplete = () => {
                     }
                     setStatus('minted');
                     setHasVerificationNft(true);
+                refreshVerificationState();
                 }
             } catch {
                 // ignore
@@ -162,6 +168,7 @@ const VerificationComplete = () => {
                 if (holding && (holding.amount ?? 0) > 0) {
                     setStatus('minted');
                     setHasVerificationNft(true);
+                refreshVerificationState();
                 }
             } catch {
                 // ignore
@@ -185,6 +192,7 @@ const VerificationComplete = () => {
                 if (holding && (holding.amount ?? 0) > 0) {
                     setStatus('minted');
                     setHasVerificationNft(true);
+                refreshVerificationState();
                 }
             } catch {
                 setOptedIn(false);
@@ -195,7 +203,7 @@ const VerificationComplete = () => {
 
     const handleCheckWallet = async () => {
         if (!accountAddress) {
-            toast({ variant: 'destructive', title: 'Wallet Not Connected', description: 'Please connect your Pera Wallet to verify VNFT ownership.' });
+            toast({ variant: 'destructive', title: 'Wallet Not Connected', description: 'Please connect your Algorand wallet to verify VNFT ownership.' });
             handleConnect();
             return;
         }
@@ -210,6 +218,7 @@ const VerificationComplete = () => {
                 }
                 setStatus('minted');
                 setHasVerificationNft(true);
+                refreshVerificationState();
                 toast({ title: 'Verification NFT Found', description: 'You are verified on-chain.' });
             } else {
                 toast({ variant: 'destructive', title: 'VNFT Not Found', description: 'Your wallet does not hold a verification NFT.' });
@@ -224,7 +233,7 @@ const VerificationComplete = () => {
 
     const handleMintVnft = async () => {
         if (!accountAddress) {
-            toast({ variant: 'destructive', title: 'Wallet Not Connected', description: 'Please connect your Pera Wallet to mint the VNFT.' });
+            toast({ variant: 'destructive', title: 'Wallet Not Connected', description: 'Please connect your Algorand wallet to mint the VNFT.' });
             handleConnect();
             return;
         }
@@ -248,6 +257,7 @@ const VerificationComplete = () => {
                 if (profileData.vnft_wallet && profileData.vnft_wallet === accountAddress) {
                     setStatus('minted');
                     setHasVerificationNft(true);
+                refreshVerificationState();
                 }
                 toast({ title: 'VNFT Assigned', description: `Asset ID: ${assetId}. If you don't see it, opt-in and claim.` });
                 return;
@@ -262,6 +272,7 @@ const VerificationComplete = () => {
                 }
                 setStatus('minted');
                 setHasVerificationNft(true);
+                refreshVerificationState();
                 toast({ title: 'Verification NFT Found', description: 'You are already verified on-chain.' });
                 return;
             }
@@ -304,7 +315,7 @@ const VerificationComplete = () => {
 
     const handleOptInVnft = async () => {
         if (!accountAddress) {
-            toast({ variant: 'destructive', title: 'Wallet Not Connected', description: 'Please connect your Pera Wallet to opt in.' });
+            toast({ variant: 'destructive', title: 'Wallet Not Connected', description: 'Please connect your Algorand wallet to opt in.' });
             handleConnect();
             return;
         }
@@ -323,7 +334,8 @@ const VerificationComplete = () => {
                 suggestedParams,
             });
             const signed = await signTransactions([[{ txn: optInTxn, signers: [accountAddress] }]]);
-            const sendResult = await algodClient.sendRawTransaction(signed).do();
+            const signedPayload = Array.isArray(signed) ? signed.flat() : signed;
+            const sendResult = await algodClient.sendRawTransaction(signedPayload).do();
             const txId = sendResult?.txId || sendResult;
             if (!txId) {
                 throw new Error('Transaction submission failed (missing txId).');
@@ -362,6 +374,7 @@ const VerificationComplete = () => {
             if (user?.id) {
                 localStorage.removeItem(`vnft_asset_id_${user.id}`);
             }
+            await refreshVerificationState();
             toast({ title: 'VNFT Transferred', description: 'Verification complete.' });
         } catch (err) {
             console.error(err);
@@ -421,7 +434,17 @@ const VerificationComplete = () => {
                         <CardTitle className="mt-6">NFT Minted Successfully!</CardTitle>
                         <CardDescription>
                             {nftAssetId ? (
-                                <>Asset ID: <a href={`https://testnet.explorer.perawallet.app/asset/${nftAssetId}`} target="_blank" rel="noopener noreferrer" className="underline">{nftAssetId}</a>. </>
+                                <>
+                                    Asset ID:{' '}
+                                    <a
+                                        href={`https://${NETWORK === 'testnet' ? 'testnet.' : ''}explorer.perawallet.app/asset/${nftAssetId}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="underline"
+                                    >
+                                        {nftAssetId}
+                                    </a>.{' '}
+                                </>
                             ) : null}
                             Welcome to the DAO!
                         </CardDescription>
@@ -449,6 +472,17 @@ const VerificationComplete = () => {
                 );
         }
     };
+
+    if (authLoading) {
+        return (
+            <div className="flex items-center justify-center min-h-[60vh]">
+                <div className="text-center space-y-4">
+                    <Loader2 className="h-8 w-8 animate-spin text-purple-400 mx-auto" />
+                    <p className="text-muted-foreground">Checking verification session…</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
