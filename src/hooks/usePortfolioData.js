@@ -1,3 +1,5 @@
+import { propertyFmv, getFmvPerToken as getFmvPerTokenLocal } from '@/data/propertyFmv';
+import { fetchLpPrices } from '@/lib/loftyDeals';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useState, useEffect } from 'react';
 import { 
@@ -125,15 +127,24 @@ export function usePortfolioData() {
     async function load() {
       try {
         // Fetch assets from all wallets
-        const [w1Assets, treasuryAssets, govAdminAssets, loftyRaw, avmRows] = await Promise.all([
+        const [w1Assets, treasuryAssets, govAdminAssets, loftyRaw, avmRows, lpPrices] = await Promise.all([
           fetchAllAssets(WALLETS.W1),
           fetchAllAssets(WALLETS.TREASURY),
           fetchAllAssets(WALLETS.GOV_ADMIN).catch(() => []), // May not exist yet
           fetchLoftyProperties(),
           fetchPortfolioAvmRows(),
+          fetchLpPrices().catch((err) => { console.error('LP price fetch failed:', err); return {}; }),
         ]);
 
         const lookup = buildPropertyLookup(loftyRaw);
+
+        // Override lpPrice with live LP marketplace prices where available
+        for (const assetId of Object.keys(lookup)) {
+          const livePrice = lpPrices[Number(assetId)];
+          if (livePrice && livePrice > 0) {
+            lookup[assetId].lpPrice = livePrice;
+          }
+        }
         const avmLookup = buildAvmLookup(avmRows);
         const allAssets = [
           ...w1Assets.map(a => ({ ...a, wallet: 'W1' })),
@@ -178,8 +189,12 @@ export function usePortfolioData() {
             if (existing) {
               existing.tokens += asset.amount;
               existing.value = existing.tokens * existing.lpPrice;
-              existing.fmv = existing.tokens * (getAvmPerToken(avmLookup, existing.address, existing.propertyId, existing.totalTokens) || existing.tokenValue);
+              const localFmvExisting = getFmvPerTokenLocal(existing.address, existing.totalTokens);
+              const avmExisting = getAvmPerToken(avmLookup, existing.address, existing.propertyId, existing.totalTokens);
+              existing.fmv = existing.tokens * (localFmvExisting || avmExisting || existing.tokenValue);
             } else {
+              const localFmv = getFmvPerTokenLocal(prop.address, prop.totalTokens);
+              const avm = getAvmPerToken(avmLookup, prop.address, prop.propertyId, prop.totalTokens);
               properties.push({
                 address: prop.address,
                 state: prop.state,
@@ -190,7 +205,7 @@ export function usePortfolioData() {
                 totalTokens: prop.totalTokens,
                 totalLoans: prop.totalLoans,
                 value: asset.amount * prop.lpPrice,
-                fmv: asset.amount * (getAvmPerToken(avmLookup, prop.address, prop.propertyId, prop.totalTokens) || prop.tokenValue),
+                fmv: asset.amount * (localFmv || avm || prop.tokenValue),
                 capRate: prop.capRate,
                 propertyId: prop.propertyId,
                 avmSource: avmLookup.byAddress[prop.address]?.avm_source || avmLookup.byPropertyId[prop.propertyId]?.avm_source || null,
@@ -245,13 +260,17 @@ export function usePortfolioData() {
         properties.sort((a, b) => b.value - a.value);
 
         const coolwoodTokens = coolwoodTreasuryTokens;
+        const coolwoodTotalTokens = 23255;
+        const coolwoodPerTokenFmv = getFmvPerTokenLocal('1 Coolwood Dr, Little Rock, AR 72202', coolwoodTotalTokens);
         const coolwood = coolwoodTokens > 0 ? {
           address: '1 Coolwood Dr, Little Rock, AR 72202',
           state: 'AR',
           tokens: coolwoodTokens,
+          totalTokens: coolwoodTotalTokens,
           lpPrice: COOLWOOD_TOKEN_PRICE,
           tokenValue: COOLWOOD_TOKEN_PRICE,
           value: coolwoodTokens * COOLWOOD_TOKEN_PRICE,
+          fmv: coolwoodPerTokenFmv ? coolwoodTokens * coolwoodPerTokenFmv : coolwoodTokens * COOLWOOD_TOKEN_PRICE,
           capRate: null,
           coc: null,
           lpApy7d: null,
@@ -294,8 +313,9 @@ export function usePortfolioData() {
         }, 0) + (coolwood ? coolwood.mortgage : 0);
         const loftyFmv = properties.reduce((s, p) => s + (p.fmv || p.value), 0);
         const coolwoodGross = coolwood ? coolwood.value : 0;
+        const coolwoodFmv = coolwood ? (coolwood.fmv || coolwood.value) : 0;
         const totalGross = loftyGross + coolwoodGross;
-        const totalFmv = loftyFmv + coolwoodGross;
+        const totalFmv = loftyFmv + coolwoodFmv;
 
         // Find top CoC property (actual rental yield, not LP APY)
         const topCoc = properties.reduce((best, p) => 
