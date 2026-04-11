@@ -10,7 +10,7 @@ import { TrendingUp, DollarSign, Bot, FilePlus, Loader2, AlertTriangle, External
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
 import { LOFTY_API } from '@/lib/wallets';
-import { MARKETPLACE_API, attachLoftyPropertyMeta, buildLoftyPropertyLookup, buildMarketplaceIdSet, filterTradableDeals, normalizeCashflowDeal } from '@/lib/loftyDeals';
+import { MARKETPLACE_API, attachLoftyPropertyMeta, buildLoftyPropertyLookup, buildMarketplaceIdSet, filterTradableDeals, normalizeCashflowDeal, fetchLpPrices } from '@/lib/loftyDeals';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -123,7 +123,7 @@ const AlphaCard = ({ deal }) => {
         });
     };
 
-    const loftyUrl = deal.property_id ? `https://www.lofty.ai/property/${deal.property_id}` : null;
+    const loftyUrl = deal.property_id ? `https://www.lofty.ai/property_deal/${deal.property_id}` : null;
     
     const getAlphaColor = (alpha) => {
         if (alpha >= 200) return 'text-green-400';
@@ -249,7 +249,7 @@ const StrategyCard = ({ deal }) => {
     const displayTitle = getDealTitle(deal);
     const displayLocation = getDealLocation(deal);
     
-    const loftyUrl = deal.property_id ? `https://www.lofty.ai/property/${deal.property_id}` : null;
+    const loftyUrl = deal.property_id ? `https://www.lofty.ai/property_deal/${deal.property_id}` : null;
     
     const getWinnerBadge = (w) => {
         if (w === 'Quote LP') return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
@@ -385,12 +385,25 @@ const CashflowCard = ({ deal }) => {
     const navigate = useNavigate();
     const { toast } = useToast();
     const [imgError, setImgError] = useState(false);
-    const displayTitle = getDealTitle(deal);
-    const displayLocation = getDealLocation(deal);
-    
+    const [isDraftOpen, setIsDraftOpen] = useState(false);
+
     const capRate = deal.cap_rate ? (deal.cap_rate * 100).toFixed(1) : '—';
     const coc = deal.coc ? (deal.coc * 100).toFixed(1) : '—';
-    const loftyUrl = deal.property_id ? `https://www.lofty.ai/property/${deal.property_id}` : null;
+    const loftyUrl = deal.property_id ? `https://www.lofty.ai/property_deal/${deal.property_id}` : null;
+
+    const hasNav = typeof deal.nav_per_token === 'number' && deal.nav_per_token > 0;
+    const upside = hasNav && deal.market_price
+        ? ((deal.nav_per_token - deal.market_price) / deal.market_price * 100).toFixed(1)
+        : null;
+    const upsideDollar = hasNav && deal.market_price
+        ? (deal.nav_per_token - deal.market_price).toFixed(2)
+        : null;
+
+    const investmentThesis = deal.proposal_draft || (
+        hasNav && parseFloat(upside) > 10
+            ? `Strong cashflow property with ${coc}% T-12 yield and ${upside}% NAV upside. NAV $${deal.nav_per_token?.toFixed(2)} vs market $${deal.market_price?.toFixed(2)} suggests undervaluation. Cap rate ${capRate}%.`
+            : null
+    );
 
     const handleCreateProposal = () => {
         const params = new URLSearchParams({
@@ -399,71 +412,121 @@ const CashflowCard = ({ deal }) => {
             address: deal.address || '',
             city: deal.city || '',
             state: deal.state || '',
-            coc: (coc * 100).toFixed(1),
+            token_price: deal.market_price || '',
+            nav_per_token: deal.nav_per_token || '',
+            coc: coc,
+            cap_rate: capRate,
+            proposal_draft: investmentThesis || '',
         });
         navigate(`/proposals/new?${params.toString()}`);
         toast({ title: "Creating Proposal", description: `Drafting proposal for ${deal.address}` });
     };
-    
+
     const getCocColor = (c) => {
         if (c >= 0.15) return 'text-green-400';
         if (c >= 0.10) return 'text-emerald-400';
         return 'text-yellow-400';
     };
 
+    const fallbackImg = 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=200&q=80';
+
     return (
         <motion.div variants={itemVariants}>
             <Card className="overflow-hidden transition-all duration-200 hover:shadow-lg hover:border-primary/30">
                 <div className="flex">
-                    <div className="w-24 h-24 shrink-0 relative bg-secondary">
+                    <div className="w-28 h-28 shrink-0 relative bg-secondary">
                         {!imgError ? (
-                            <img 
+                            <img
                                 src={getPropertyImage(deal)}
                                 alt={deal.address}
                                 className="w-full h-full object-cover"
                                 onError={() => setImgError(true)}
                             />
                         ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                                <DollarSign className="h-6 w-6 text-muted-foreground" />
+                            <div className="w-full h-full flex items-center justify-center bg-secondary">
+                                <DollarSign className="h-8 w-8 text-muted-foreground" />
                             </div>
                         )}
                     </div>
-                    <div className="flex-1 p-2.5 min-w-0">
-                        <h3 className="font-medium text-xs truncate">{displayTitle}</h3>
-                        {displayLocation && <p className="text-[10px] text-muted-foreground">{displayLocation}</p>}
-                        
-                        <div className="flex items-center gap-2 mt-2">
-                            <Percent className="h-4 w-4 text-green-400" />
-                            <span className={`text-lg font-bold ${getCocColor(deal.coc || 0)}`}>
-                                {coc}%
-                            </span>
-                            <span className="text-xs text-muted-foreground">CoC</span>
-                        </div>
-                        
-                        <div className="flex gap-3 mt-1.5 text-[10px]">
-                            <div>
-                                <span className="text-muted-foreground">Price:</span>
-                                <span className="ml-1 font-medium">${deal.market_price?.toFixed(2) || '—'}</span>
+                    <div className="flex-1 p-3 min-w-0">
+                        <div className="flex justify-between items-start gap-2">
+                            <div className="min-w-0">
+                                <h3 className="font-semibold text-sm truncate">{deal.address}</h3>
+                                <p className="text-xs text-muted-foreground">{[deal.city, deal.state].filter(Boolean).join(', ')}</p>
                             </div>
-                            {capRate !== '—' && (
-                                <div>
-                                    <span className="text-muted-foreground">Cap:</span>
-                                    <span className="ml-1 font-medium">{capRate}%</span>
-                                </div>
+                            {loftyUrl && (
+                                <a href={loftyUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary shrink-0">
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                </a>
                             )}
                         </div>
+
+                        <div className="flex items-center gap-2 mt-2">
+                            <span className={`text-xl font-bold ${getCocColor(deal.coc || 0)}`}>
+                                {coc}%
+                            </span>
+                            <span className="text-xs text-muted-foreground">T-12 yield</span>
+                        </div>
+
+                        <div className="flex gap-3 mt-1.5 text-xs">
+                            {hasNav && (
+                                <div>
+                                    <span className="text-muted-foreground">NAV:</span>
+                                    <span className="ml-1 font-semibold text-green-400">${deal.nav_per_token?.toFixed(2)}</span>
+                                </div>
+                            )}
+                            <div>
+                                <span className="text-muted-foreground">Market:</span>
+                                <span className="ml-1 font-semibold">${deal.market_price?.toFixed(2) || '—'}</span>
+                            </div>
+                        </div>
+
+                        {capRate !== '—' && (
+                            <div className="text-xs text-muted-foreground mt-1">
+                                Cap: {capRate}%
+                            </div>
+                        )}
+                        {deal.avmSource && (
+                            <div className="text-[10px] text-blue-400 mt-1">
+                                AVM source: {deal.avmCorrected ? 'corrected ' : ''}{deal.avmSource}
+                            </div>
+                        )}
                     </div>
                 </div>
-                
-                <div className="flex items-center justify-between px-2.5 py-1.5 bg-secondary/20 border-t">
-                    <span className="text-[10px] text-muted-foreground">
-                        Market: ${deal.market_price?.toFixed(2) || '—'}
+
+                <div className="flex items-center justify-between px-3 py-2 bg-secondary/20 border-t">
+                    <span className="text-sm">
+                        {upside !== null ? (
+                            <>
+                                <span className="text-muted-foreground">Upside:</span>
+                                <span className={`ml-1 font-bold ${parseFloat(upside) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                    {parseFloat(upside) >= 0 ? '+' : ''}{upsideDollar} ({upside}%)
+                                </span>
+                            </>
+                        ) : (
+                            <span className="text-muted-foreground">CoC: {coc}%</span>
+                        )}
                     </span>
-                    <Button size="sm" onClick={handleCreateProposal} className="h-6 text-[10px] px-2">
+                    <Button size="sm" onClick={handleCreateProposal} className="h-7 text-xs bg-gradient-to-r from-purple-600 to-indigo-600">
                         <FilePlus className="mr-1 h-3 w-3" /> Proposal
                     </Button>
                 </div>
+
+                {investmentThesis && (
+                    <Collapsible open={isDraftOpen} onOpenChange={setIsDraftOpen}>
+                        <CollapsibleTrigger asChild>
+                            <button className="w-full px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/30 transition-colors flex items-center justify-center gap-1">
+                                <span>Investment Thesis</span>
+                                {isDraftOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                            </button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                            <div className="px-3 py-2 text-xs bg-secondary/30 max-h-40 overflow-y-auto">
+                                <pre className="whitespace-pre-wrap font-sans">{investmentThesis}</pre>
+                            </div>
+                        </CollapsibleContent>
+                    </Collapsible>
+                )}
             </Card>
         </motion.div>
     );
@@ -479,12 +542,11 @@ const LoftyDeals = () => {
     useEffect(() => {
         const fetchDeals = async () => {
             try {
-                // Fetch alpha opportunities (with proposal_rank)
+                // Fetch all alpha opportunities so ranked deals stay first,
+                // then backfill with unranked tradable rows up to 20.
                 const { data: alphaData, error: alphaErr } = await supabase
                     .from('lofty_alpha_opportunities')
-                    .select('*')
-                    .not('proposal_rank', 'is', null)
-                    .order('proposal_rank', { ascending: true });
+                    .select('*');
                 
                 if (alphaErr) throw alphaErr;
 
@@ -526,13 +588,64 @@ const LoftyDeals = () => {
                     .filter((deal) => typeof deal.coc === 'number' && deal.coc > 0)
                     .sort((a, b) => (b.coc || 0) - (a.coc || 0))
                     .slice(0, 20);
-                setCashflowDeals(liveCashflowDeals);
 
-                const enrichedAlphaDeals = filterTradableDeals(
+                // Enrich cashflow deals with AVM/NAV data (same as alpha deals).
+                const enrichedCashflowDeals = liveCashflowDeals.map((deal) => {
+                    const avm = avmLookup[deal.property_id];
+                    if (!avm) return deal;
+                    return {
+                        ...deal,
+                        nav_per_token: avm.avmPerToken ?? deal.nav_per_token,
+                        avm: avm.avm,
+                        market_cap: avm.market_cap,
+                        avmSource: avm.avm_source || null,
+                        avmCorrected: avm.avm_corrected || false,
+                    };
+                });
+                
+
+                // Fetch live LP marketplace prices and apply to cashflow deals
+                const lpPrices = await fetchLpPrices();
+                const cashflowWithLp = enrichedCashflowDeals.map((deal) => {
+                    const lp = deal.assetId ? lpPrices[deal.assetId] : null;
+                    if (lp) {
+                        return { ...deal, market_price: lp };
+                    }
+                    return deal;
+                });
+                setCashflowDeals(cashflowWithLp);
+
+                const tradableAlphaDeals = filterTradableDeals(
                     attachLoftyPropertyMeta(alphaData || [], loftyPropertyLookup),
                     marketplaceIds,
-                ).slice(0, 20);
-                setAlphaDeals(mergeAlphaDealsWithAvm(enrichedAlphaDeals, avmLookup));
+                );
+
+                const enrichedAlphaDeals = tradableAlphaDeals
+                    .sort((a, b) => {
+                        const rankA = typeof a.proposal_rank === 'number' ? a.proposal_rank : Number.POSITIVE_INFINITY;
+                        const rankB = typeof b.proposal_rank === 'number' ? b.proposal_rank : Number.POSITIVE_INFINITY;
+                        if (rankA !== rankB) return rankA - rankB;
+
+                        const navA = typeof a.nav_per_token === 'number' ? a.nav_per_token : 0;
+                        const navB = typeof b.nav_per_token === 'number' ? b.nav_per_token : 0;
+                        const marketA = typeof a.market_price === 'number' ? a.market_price : (typeof a.tokenValue === 'number' ? a.tokenValue : 0);
+                        const marketB = typeof b.market_price === 'number' ? b.market_price : (typeof b.tokenValue === 'number' ? b.tokenValue : 0);
+                        const alphaA = marketA > 0 ? ((navA - marketA) / marketA) : Number.NEGATIVE_INFINITY;
+                        const alphaB = marketB > 0 ? ((navB - marketB) / marketB) : Number.NEGATIVE_INFINITY;
+                        return alphaB - alphaA;
+                    })
+                    .slice(0, 20);
+                
+
+                // Apply live LP prices to alpha deals
+                const alphaWithLp = enrichedAlphaDeals.map((deal) => {
+                    const lp = deal.assetId ? lpPrices[deal.assetId] : null;
+                    if (lp && lp > 0) {
+                        return { ...deal, market_price: lp };
+                    }
+                    return deal;
+                });
+                setAlphaDeals(mergeAlphaDealsWithAvm(alphaWithLp, avmLookup));
 
                 if (strategyErr) throw strategyErr;
 
@@ -661,8 +774,8 @@ const LoftyDeals = () => {
                   ) : (
                       <>
                       <div className="mb-3 p-3 bg-secondary/30 rounded-lg">
-                          <h3 className="font-semibold text-sm">Highest Live Cash-on-Cash Properties</h3>
-                          <p className="text-xs text-muted-foreground">Live LoftyAssist CoC rankings, ordered by cash-on-cash return</p>
+                          <h3 className="font-semibold text-sm">Highest Yielding Properties</h3>
+                          <p className="text-xs text-muted-foreground">Ranked by trailing 12-month (T-12) historical yield with NAV upside analysis</p>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                           {cashflowDeals.map(deal => <CashflowCard key={deal.property_id || deal.id} deal={deal} />)}
