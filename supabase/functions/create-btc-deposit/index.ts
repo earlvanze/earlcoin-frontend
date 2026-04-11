@@ -6,15 +6,16 @@ const PROJECT_SECRET_KEY = Deno.env.get('PROJECT_SECRET_KEY') ?? '';
 const TREASURY_ADDRESS = Deno.env.get('TREASURY_ADDRESS') ?? '';
 const GOBTC_ASA_ID = Number(Deno.env.get('GOBTC_ASA_ID') ?? '386192725');
 
-// Bridge provider configuration.
-// Set BTC_BRIDGE_API_URL and BTC_BRIDGE_API_KEY to the goBTC bridge
-// endpoint that accepts { btc_amount, algorand_recipient } and returns
-// { btc_address, expires_at }.  When the env vars are absent the function
-// falls back to a static treasury BTC deposit address so that manual
-// settlement can still proceed.
-const BTC_BRIDGE_API_URL = Deno.env.get('BTC_BRIDGE_API_URL') ?? '';
-const BTC_BRIDGE_API_KEY = Deno.env.get('BTC_BRIDGE_API_KEY') ?? '';
-const BTC_FALLBACK_ADDRESS = Deno.env.get('BTC_FALLBACK_ADDRESS') ?? '';
+// DAO treasury BTC address.  All BTC deposits land here.
+// Each order is identified by a unique satoshi amount (base + order suffix).
+const BTC_TREASURY_ADDRESS = Deno.env.get('BTC_TREASURY_ADDRESS') ?? '';
+
+// mempool.space is the most reliable public Bitcoin API.
+// Self-hosted instances can be pointed to via this env var.
+const MEMPOOL_API = Deno.env.get('MEMPOOL_API_URL') ?? 'https://mempool.space/api';
+
+// Order expiry window (2 hours).
+const DEPOSIT_TTL_MS = 2 * 60 * 60 * 1000;
 
 const supabaseAdmin = createClient(PROJECT_URL, PROJECT_SECRET_KEY);
 
@@ -24,45 +25,25 @@ const jsonResponse = (status: number, body: Record<string, unknown>) =>
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 
-async function requestBridgeAddress(
-  btcAmount: number,
-  algorandRecipient: string,
-): Promise<{ btc_address: string; expires_at: string | null }> {
-  if (BTC_BRIDGE_API_URL) {
-    const res = await fetch(BTC_BRIDGE_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(BTC_BRIDGE_API_KEY ? { Authorization: `Bearer ${BTC_BRIDGE_API_KEY}` } : {}),
-      },
-      body: JSON.stringify({
-        btc_amount: btcAmount,
-        algorand_recipient: algorandRecipient,
-        algorand_asset_id: GOBTC_ASA_ID,
-      }),
-    });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error(`Bridge API returned ${res.status}: ${text}`);
-    }
-
-    const data = await res.json();
-    return {
-      btc_address: data.btc_address || data.address || data.deposit_address,
-      expires_at: data.expires_at || data.expiry || null,
-    };
+// Add a deterministic satoshi suffix (1–9999 sats) to the base BTC amount
+// so each deposit is uniquely identifiable on-chain at the treasury address.
+function tagAmount(baseSats: number, orderId: string): number {
+  let hash = 0;
+  for (let i = 0; i < orderId.length; i++) {
+    hash = ((hash << 5) - hash + orderId.charCodeAt(i)) | 0;
   }
+  const suffix = (Math.abs(hash) % 9999) + 1; // 1–9999
+  return baseSats + suffix;
+}
 
-  // Fallback: return a static BTC address for manual bridging.
-  if (!BTC_FALLBACK_ADDRESS) {
-    throw new Error('No bridge API or fallback BTC address configured');
+// Verify the treasury BTC address is valid via mempool.space.
+async function verifyBtcAddress(address: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${MEMPOOL_API}/address/${address}`);
+    return res.ok;
+  } catch {
+    return false;
   }
-
-  return {
-    btc_address: BTC_FALLBACK_ADDRESS,
-    expires_at: null,
-  };
 }
 
 Deno.serve(async (req) => {
@@ -73,6 +54,9 @@ Deno.serve(async (req) => {
   try {
     if (!PROJECT_URL || !PROJECT_SECRET_KEY) {
       return jsonResponse(500, { error: 'Project secret key not configured' });
+    }
+    if (!BTC_TREASURY_ADDRESS) {
+      return jsonResponse(500, { error: 'BTC_TREASURY_ADDRESS not configured' });
     }
 
     const authHeader = req.headers.get('Authorization') ?? '';
@@ -101,23 +85,13 @@ Deno.serve(async (req) => {
       return jsonResponse(400, { error: 'quantity_base_units and gobtc_amount are required' });
     }
 
-    // The goBTC bridge delivers to the treasury wallet directly so the
-    // treasury can settle EARL from its own inventory.
-    const algorandRecipient = TREASURY_ADDRESS;
-    if (!algorandRecipient) {
-      return jsonResponse(500, { error: 'Treasury address not configured' });
+    // Verify the BTC address is reachable on mempool.space.
+    const addressValid = await verifyBtcAddress(BTC_TREASURY_ADDRESS);
+    if (!addressValid) {
+      return jsonResponse(502, { error: 'Treasury BTC address could not be verified on-chain' });
     }
 
-    // Convert gobtcAmount (base units, 8 decimals) to BTC for the bridge API.
-    const btcDecimal = Number(gobtcAmount) / 1e8;
-
-    const bridge = await requestBridgeAddress(btcDecimal, algorandRecipient);
-
-    if (!bridge.btc_address) {
-      return jsonResponse(502, { error: 'Bridge did not return a deposit address' });
-    }
-
-    // Create treasury order to track this BTC deposit.
+    // Create treasury order first so we have an ID for amount tagging.
     const { data: order, error: orderError } = await supabaseAdmin
       .from('treasury_orders')
       .insert({
@@ -138,18 +112,27 @@ Deno.serve(async (req) => {
       return jsonResponse(500, { error: orderError.message });
     }
 
-    // Persist bridge details for reconciliation.
+    // Compute the tagged satoshi amount so the monitor can match this deposit.
+    const baseSats = Number(gobtcAmount); // gobtcAmount is already in sats (8 decimals)
+    const taggedSats = tagAmount(baseSats, order.id);
+    const taggedBtc = taggedSats / 1e8;
+
+    const expiresAt = new Date(Date.now() + DEPOSIT_TTL_MS).toISOString();
+
+    // Persist the exact expected amount and BTC address for the monitor.
     await supabaseAdmin.from('treasury_orders').update({
-      reserve_wallet_address: bridge.btc_address,
+      reserve_wallet_address: BTC_TREASURY_ADDRESS,
+      payment_amount: taggedSats,
       updated_at: new Date().toISOString(),
     }).eq('id', order.id);
 
     return jsonResponse(200, {
       ok: true,
       order_id: order.id,
-      btc_address: bridge.btc_address,
-      btc_amount: btcDecimal,
-      expires_at: bridge.expires_at,
+      btc_address: BTC_TREASURY_ADDRESS,
+      btc_amount: taggedBtc,
+      btc_amount_sats: taggedSats,
+      expires_at: expiresAt,
       btc_usd_rate: btcUsdRate,
       earl_usd_rate: earlUsdRate,
     });
