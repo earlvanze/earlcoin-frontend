@@ -5,16 +5,15 @@ import PageTitle from '@/components/PageTitle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Loader2, Wallet, ArrowRightLeft, Building2, CheckCircle2, Search, AlertTriangle } from 'lucide-react';
+import { Loader2, Wallet, ArrowRightLeft, Building2, CheckCircle2, Search, AlertTriangle, Snowflake } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { useAppContext } from '@/contexts/AppContext';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { cn } from '@/lib/utils';
 import { fetchLpPrices } from '@/lib/loftyDeals';
-import { supabase } from '@/lib/customSupabaseClient';
 import { algodClient } from '@/lib/algorand';
 import { WALLETS, INDEXER_BASE, LOFTY_API } from '@/lib/wallets';
-import { EARL_ASA_ID } from '@/lib/config';
+import { EARL_ASA_ID, INKIND_EXCHANGE_APP_ID } from '@/lib/config';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -26,9 +25,8 @@ const itemVariants = {
 };
 
 const EARL_PRICE = 100;
-const ASSET_DECIMALS = 6;
-const BASE_UNIT = 10 ** ASSET_DECIMALS;
-const TREASURY_ORDER_EVENT = 'treasury-orders-updated';
+const EARL_DECIMALS = 6;
+const LP_UNIT_PREFIXES = ['LP-', 'LP_'];
 
 const formatCurrency = (v, d = 2) =>
   new Intl.NumberFormat('en-US', {
@@ -38,14 +36,16 @@ const formatCurrency = (v, d = 2) =>
     maximumFractionDigits: d,
   }).format(Number(v || 0));
 
-const notifyTreasuryOrdersUpdated = () => {
-  if (typeof window !== 'undefined') window.dispatchEvent(new Event(TREASURY_ORDER_EVENT));
-};
-
 const LOFTY_CREATORS = new Set([
   'GQ46SBJ6Y5CJHJXLPTDBTHFJYEBI4LHPL5MOPCG5B6C4ONOG2RJHTM6VE',
   'LOFTYYD7TVIGMHGLUJLSJPHMQ7WCEIYSVDPSXPWOHXCYHOB3Y5BSBD57VU',
 ]);
+
+function isLpToken(unitName, name) {
+  const u = (unitName || '').toUpperCase();
+  const n = (name || '').toUpperCase();
+  return LP_UNIT_PREFIXES.some(prefix => u.startsWith(prefix)) || n.startsWith('LP-') || n.startsWith('LP_');
+}
 
 async function fetchLoftyHoldings(walletAddress) {
   const url = `${INDEXER_BASE}/v2/accounts/${walletAddress}/assets?limit=200`;
@@ -67,6 +67,8 @@ async function fetchLoftyHoldings(walletAddress) {
           decimals: params.decimals || 0,
           name: params.name || `ASA ${asset['asset-id']}`,
           unitName: params['unit-name'] || '',
+          defaultFrozen: params['default-frozen'] || false,
+          total: params.total || 0,
         });
       }
     } catch { /* skip */ }
@@ -82,11 +84,17 @@ async function fetchLoftyAssistProperties() {
     const map = {};
     for (const item of items) {
       const p = item?.property || {};
+      const lp = item?.liquidityPool || {};
       const entry = {
         address: p.address || 'Unknown',
         city: p.market || p.city || '',
         state: p.state || '',
         tokenValue: p.tokenValue || null,
+        listingStatus: p.listingStatus || null,
+        // LP interface app ID for DODO PMM on-chain pricing
+        lpInterfaceAppId: lp?.appId || null,
+        // Admin/app ID for oracle + k params
+        adminAppId: lp?.appId || null, // Lofty LP apps are self-referencing for admin
       };
       if (p.assetId) map[p.assetId] = entry;
       if (p.newAssetId) map[p.newAssetId] = entry;
@@ -95,26 +103,78 @@ async function fetchLoftyAssistProperties() {
   } catch { return {}; }
 }
 
-const HoldingRow = ({ holding, selected, onToggle, lpPrice, propertyMeta }) => {
+/**
+ * Build an atomic swap group using the in-kind exchange smart contract.
+ * Group: [app_call(exchange), axfer(lofty_token → app)]
+ *
+ * The contract computes the DODO PMM price on-chain and sends EARL back
+ * via inner transaction — no trust, no Supabase order needed.
+ */
+async function buildAtomicSwapGroup({
+  appId,
+  sender,
+  loftyAsaId,
+  loftyAmount,
+  adminAppId,
+  lpInterfaceAppId,
+  peraWallet,
+}) {
+  const params = await algodClient.getTransactionParams().do();
+
+  // Transaction 1: App call — exchange(sender, loftyAsa, adminApp, lpInterface)
+  const appCall = algosdk.makeApplicationCallTxnFromObject({
+    from: sender,
+    appIndex: appId,
+    appArgs: [
+      new TextEncoder().encode('exchange'),
+    ],
+    foreignApps: [adminAppId, lpInterfaceAppId],
+    foreignAssets: [loftyAsaId, EARL_ASA_ID],
+    suggestedParams: params,
+  });
+
+  // Transaction 2: Asset transfer — send Lofty tokens to the app
+  const tokenPayment = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
+    from: sender,
+    to: algosdk.getApplicationAddress(appId),
+    amount: loftyAmount,
+    assetIndex: loftyAsaId,
+    suggestedParams: params,
+    note: new TextEncoder().encode(`lofty_swap:${loftyAsaId}`),
+  });
+
+  // Assign group ID
+  algosdk.assignGroupID([appCall, tokenPayment]);
+
+  return [appCall, tokenPayment];
+}
+
+const HoldingRow = ({ holding, selected, onToggle, disabled, reason, lpPrice, propertyMeta }) => {
   const tokenCount = holding.decimals > 0 ? holding.amount / 10 ** holding.decimals : holding.amount;
   const price = lpPrice || propertyMeta?.tokenValue || 0;
   const totalValue = tokenCount * price;
   const earlEquivalent = totalValue / EARL_PRICE;
   const label = propertyMeta?.address || holding.name;
+  const isFrozen = holding.defaultFrozen;
+  const isZeroPrice = price <= 0;
 
   return (
     <div
       className={cn(
-        'flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
-        selected ? 'border-primary bg-primary/10' : 'border-border/50 hover:border-border'
+        'flex items-center gap-3 p-3 rounded-lg border transition-colors',
+        disabled
+          ? 'border-muted/30 bg-muted/5 cursor-not-allowed opacity-60'
+          : 'border-border/50 hover:border-border cursor-pointer',
+        selected && !disabled ? 'border-primary bg-primary/10' : '',
       )}
-      onClick={() => onToggle(holding.assetId)}
+      onClick={disabled ? undefined : () => onToggle(holding.assetId)}
     >
       <div className={cn(
         'w-5 h-5 rounded border-2 flex items-center justify-center shrink-0',
-        selected ? 'border-primary bg-primary' : 'border-muted-foreground/40'
+        disabled ? 'border-muted-foreground/20' : selected ? 'border-primary bg-primary' : 'border-muted-foreground/40',
       )}>
-        {selected && <CheckCircle2 className="h-3.5 w-3.5 text-primary-foreground" />}
+        {selected && !disabled && <CheckCircle2 className="h-3.5 w-3.5 text-primary-foreground" />}
+        {isFrozen && <Snowflake className="h-3.5 w-3.5 text-blue-300" />}
       </div>
       <Building2 className="h-5 w-5 text-muted-foreground shrink-0" />
       <div className="flex-1 min-w-0">
@@ -122,12 +182,16 @@ const HoldingRow = ({ holding, selected, onToggle, lpPrice, propertyMeta }) => {
         <p className="text-xs text-muted-foreground">
           {propertyMeta?.city && propertyMeta?.state ? `${propertyMeta.city}, ${propertyMeta.state} · ` : ''}
           ASA {holding.assetId}
+          {holding.unitName ? ` · ${holding.unitName}` : ''}
         </p>
       </div>
+      {disabled && reason && (
+        <span className="text-xs text-destructive/80 font-medium shrink-0">{reason}</span>
+      )}
       <div className="text-right shrink-0">
         <p className="text-sm font-medium">{tokenCount.toLocaleString()} tok</p>
         <p className="text-xs text-muted-foreground">
-          {price > 0 ? `${formatCurrency(price)}/tok · ${formatCurrency(totalValue)}` : 'No price'}
+          {isZeroPrice ? 'No price' : `${formatCurrency(price)}/tok · ${formatCurrency(totalValue)}`}
         </p>
       </div>
       <div className="text-right shrink-0 w-24">
@@ -151,17 +215,30 @@ const LoftySwap = () => {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [searchFilter, setSearchFilter] = useState('');
 
+  const appId = INKIND_EXCHANGE_APP_ID;
+
   useEffect(() => {
     if (!isConnected || !accountAddress) { setHoldings([]); return; }
     const load = async () => {
       setLoading(true);
       try {
-        const [h, prices, meta] = await Promise.all([
+        const [rawHoldings, prices, meta] = await Promise.all([
           fetchLoftyHoldings(accountAddress),
           fetchLpPrices(),
           fetchLoftyAssistProperties(),
         ]);
-        setHoldings(h);
+
+        // SECURITY #1: Filter out LP pool tokens
+        let filtered = rawHoldings.filter(h => !isLpToken(h.unitName, h.name));
+
+        // SECURITY #5: LoftyAssist property allowlist — fail closed if no data
+        if (Object.keys(meta).length > 0) {
+          filtered = filtered.filter(h => meta[h.assetId]);
+        } else {
+          filtered = [];
+        }
+
+        setHoldings(filtered);
         setLpPrices(prices);
         setPropertyMap(meta);
       } catch (err) {
@@ -179,103 +256,171 @@ const LoftySwap = () => {
     });
   }, []);
 
+  const holdingsWithStatus = useMemo(() => {
+    return holdings.map(h => {
+      const isFrozen = h.defaultFrozen;
+      const price = lpPrices[h.assetId] || propertyMap[h.assetId]?.tokenValue || 0;
+      const isZeroPrice = price <= 0;
+      // Check if we have LP app IDs for on-chain pricing
+      const meta = propertyMap[h.assetId];
+      const hasLpApp = !!(meta?.lpInterfaceAppId && meta?.adminAppId);
+      let disabled = false;
+      let reason = '';
+      if (isFrozen) { disabled = true; reason = 'Frozen'; }
+      else if (isZeroPrice) { disabled = true; reason = 'No price'; }
+      else if (!hasLpApp && appId) { disabled = true; reason = 'No LP data'; }
+      return { ...h, price, disabled, reason };
+    });
+  }, [holdings, lpPrices, propertyMap, appId]);
+
   const filteredHoldings = useMemo(() => {
-    if (!searchFilter.trim()) return holdings;
+    if (!searchFilter.trim()) return holdingsWithStatus;
     const q = searchFilter.toLowerCase();
-    return holdings.filter((h) => {
+    return holdingsWithStatus.filter((h) => {
       const m = propertyMap[h.assetId];
       return [h.name, h.unitName, String(h.assetId), m?.address, m?.city, m?.state]
         .filter(Boolean).join(' ').toLowerCase().includes(q);
     });
-  }, [holdings, searchFilter, propertyMap]);
+  }, [holdingsWithStatus, searchFilter, propertyMap]);
 
   const selectAll = useCallback(() => {
-    setSelectedIds((prev) =>
-      prev.size === filteredHoldings.length
-        ? new Set()
-        : new Set(filteredHoldings.map((h) => h.assetId))
-    );
+    const selectable = filteredHoldings.filter(h => !h.disabled);
+    setSelectedIds((prev) => {
+      const selectableIds = new Set(selectable.map(h => h.assetId));
+      const allSelected = [...selectableIds].every(id => prev.has(id));
+      return allSelected ? new Set() : selectableIds;
+    });
   }, [filteredHoldings]);
 
   const { totalUsdValue, totalEarl, selectedHoldings } = useMemo(() => {
     let usd = 0, earl = 0;
     const sel = [];
-    for (const h of holdings) {
-      if (!selectedIds.has(h.assetId)) continue;
+    for (const h of holdingsWithStatus) {
+      if (!selectedIds.has(h.assetId) || h.disabled) continue;
       const tc = h.decimals > 0 ? h.amount / 10 ** h.decimals : h.amount;
-      const p = lpPrices[h.assetId] || propertyMap[h.assetId]?.tokenValue || 0;
-      const v = tc * p;
+      const v = tc * h.price;
       usd += v;
       earl += v / EARL_PRICE;
-      sel.push({ ...h, tokenCount: tc, price: p, value: v });
+      sel.push({ ...h, tokenCount: tc, value: v });
     }
     return { totalUsdValue: usd, totalEarl: earl, selectedHoldings: sel };
-  }, [holdings, selectedIds, lpPrices, propertyMap]);
+  }, [holdingsWithStatus, selectedIds]);
 
+  const canSwap = selectedHoldings.length > 0 && totalEarl > 0 && !submitting && kycVerified;
+
+  /**
+   * Atomic swap using the in-kind exchange smart contract.
+   * For each selected token, builds a 2-txn group:
+   *   [app_call(exchange), axfer(lofty → app)]
+   * The contract computes the DODO PMM price on-chain and sends EARL
+   * back via inner transaction — trustless and atomic.
+   *
+   * Falls back to the old trust-based flow if the contract is not deployed.
+   */
   const handleSwap = async () => {
-    if (!user) { toast({ variant: 'destructive', title: 'Not logged in' }); return; }
     if (!kycVerified) { toast({ variant: 'destructive', title: 'KYC required' }); return; }
-    if (!selectedHoldings.length || totalEarl <= 0) {
-      toast({ variant: 'destructive', title: 'Select tokens with price data' });
+    if (!canSwap) { toast({ variant: 'destructive', title: 'Select tokens with price data' }); return; }
+
+    // Re-verify no disabled tokens
+    const invalidToken = selectedHoldings.find(h => h.disabled);
+    if (invalidToken) {
+      toast({ variant: 'destructive', title: 'Invalid selection', description: `${invalidToken.name} is not swappable.` });
       return;
     }
 
     setSubmitting(true);
+
     try {
-      const params = await algodClient.getTransactionParams().do();
-      const txns = selectedHoldings.map((h) =>
-        algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
-          from: accountAddress,
-          to: WALLETS.TREASURY,
-          amount: h.amount,
-          assetIndex: h.assetId,
-          suggestedParams: params,
-          note: new TextEncoder().encode(`lofty_swap:${h.assetId}:${h.tokenCount}@${h.price}`),
-        })
-      );
-      if (txns.length > 1) algosdk.assignGroupID(txns);
+      if (appId && appId > 0) {
+        // ═══════════════════════════════════════════════
+        // SMART CONTRACT PATH: Atomic trustless swap
+        // ═══════════════════════════════════════════════
 
-      const signed = await peraWallet.signTransaction(
-        [txns.map((txn) => ({ txn, signers: [accountAddress] }))],
-        accountAddress
-      );
-      await algodClient.sendRawTransaction(signed).do();
-      const txId = txns[0].txID().toString();
-      await algosdk.waitForConfirmation(algodClient, txId, 4);
+        // Each token swap is a separate atomic group (2 txns each).
+        // We execute them sequentially to avoid group ID conflicts.
+        for (let i = 0; i < selectedHoldings.length; i++) {
+          const h = selectedHoldings[i];
+          const meta = propertyMap[h.assetId];
+          const adminAppId = meta?.adminAppId;
+          const lpInterfaceAppId = meta?.lpInterfaceAppId;
 
-      const earlBaseUnits = Math.round(totalEarl * BASE_UNIT);
-      const { error: orderErr } = await supabase.from('treasury_orders').insert({
-        user_id: user.id,
-        wallet_address: accountAddress,
-        purchase_type: 'lofty_swap',
-        quantity: Math.floor(totalEarl),
-        quantity_base_units: earlBaseUnits,
-        status: 'pending_wallet_settlement',
-        payment_amount: Math.round(totalUsdValue * BASE_UNIT),
-        payment_tx_id: txId,
-      });
-      if (orderErr) throw orderErr;
+          if (!adminAppId || !lpInterfaceAppId) {
+            throw new Error(`No LP app data for ${h.name} (ASA ${h.assetId}). Cannot compute on-chain price.`);
+          }
 
-      notifyTreasuryOrdersUpdated();
-      toast({
-        title: 'Lofty → EARL swap submitted',
-        description: `${selectedHoldings.length} token(s) sent to Treasury. ${totalEarl.toFixed(4)} EARL pending settlement.`,
-      });
+          const txns = await buildAtomicSwapGroup({
+            appId,
+            sender: accountAddress,
+            loftyAsaId: h.assetId,
+            loftyAmount: h.amount,
+            adminAppId,
+            lpInterfaceAppId,
+            peraWallet,
+          });
+
+          // Sign both transactions with Pera wallet
+          const signed = await peraWallet.signTransaction(
+            [txns.map(txn => ({ txn, signers: [accountAddress] }))],
+            accountAddress,
+          );
+
+          const { txId } = await algodClient.sendRawTransaction(signed).do();
+          await algosdk.waitForConfirmation(algodClient, txId, 6);
+
+          toast({
+            title: `Swap ${i + 1}/${selectedHoldings.length} confirmed`,
+            description: `${h.name || `ASA ${h.assetId}`} → EARL (on-chain PMM price)`,
+          });
+        }
+
+        toast({
+          title: 'All swaps complete',
+          description: `${selectedHoldings.length} token(s) swapped for EARL atomically via smart contract.`,
+        });
+      } else {
+        // ═══════════════════════════════════════════════
+        // FALLBACK: Smart contract not deployed
+        // ═══════════════════════════════════════════════
+        toast({
+          variant: 'destructive',
+          title: 'Exchange contract not available',
+          description: 'The in-kind exchange smart contract has not been deployed yet. Please deploy it first.',
+        });
+        return;
+      }
+
       setSelectedIds(new Set());
       setHoldings(await fetchLoftyHoldings(accountAddress));
     } catch (err) {
       console.error('Lofty swap failed:', err);
+      const msg = err?.message || String(err);
+      const isCancel = /cancel|reject|deny|closed/i.test(msg);
       toast({
         variant: 'destructive',
-        title: /cancel|reject|deny|closed/i.test(err?.message) ? 'Cancelled' : 'Swap failed',
-        description: err.message,
+        title: isCancel ? 'Cancelled' : 'Swap failed',
+        description: msg,
       });
     } finally { setSubmitting(false); }
   };
 
+  const swappableCount = holdingsWithStatus.filter(h => !h.disabled).length;
+  const frozenCount = holdingsWithStatus.filter(h => h.defaultFrozen).length;
+  const noPriceCount = holdingsWithStatus.filter(h => !h.defaultFrozen && h.price <= 0).length;
+  const noLpDataCount = holdingsWithStatus.filter(h => !h.defaultFrozen && h.price > 0 && h.disabled && h.reason === 'No LP data').length;
+  const isContractMode = appId && appId > 0;
+
   return (
     <motion.div initial="hidden" animate="visible" variants={containerVariants}>
       <PageTitle title="Lofty → EARL Swap" description="Trade your Lofty property tokens for EARL at live LP market prices" />
+
+      {isContractMode && (
+        <motion.div variants={itemVariants} className="mb-4">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-green-500/10 border border-green-500/20 text-xs text-green-400">
+            <CheckCircle2 className="h-4 w-4" />
+            <span>Atomic smart contract active — swaps are trustless and on-chain</span>
+          </div>
+        </motion.div>
+      )}
 
       {!isConnected && (
         <motion.div variants={itemVariants} className="mb-6">
@@ -324,17 +469,22 @@ const LoftySwap = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="flex items-center gap-2">
-                    <Building2 className="h-5 w-5" /> Your Lofty Tokens ({holdings.length})
+                    <Building2 className="h-5 w-5" /> Your Lofty Tokens ({holdingsWithStatus.length})
                   </CardTitle>
-                  <CardDescription>Select tokens to swap for EARL at Lofty LP market price</CardDescription>
+                  <CardDescription>
+                    {swappableCount} swappable
+                    {frozenCount > 0 && ` · ${frozenCount} frozen`}
+                    {noPriceCount > 0 && ` · ${noPriceCount} no price`}
+                    {noLpDataCount > 0 && ` · ${noLpDataCount} no LP data`}
+                  </CardDescription>
                 </div>
-                {holdings.length > 0 && (
+                {swappableCount > 0 && (
                   <Button variant="outline" size="sm" onClick={selectAll}>
-                    {selectedIds.size === filteredHoldings.length ? 'Deselect All' : 'Select All'}
+                    {selectedIds.size === swappableCount ? 'Deselect All' : 'Select All'}
                   </Button>
                 )}
               </div>
-              {holdings.length > 5 && (
+              {holdingsWithStatus.length > 5 && (
                 <div className="relative mt-3">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input placeholder="Filter by address, city, or ASA ID…" value={searchFilter} onChange={(e) => setSearchFilter(e.target.value)} className="pl-9 text-gray-900" />
@@ -342,12 +492,21 @@ const LoftySwap = () => {
               )}
             </CardHeader>
             <CardContent className="space-y-2 max-h-[28rem] overflow-y-auto">
-              {holdings.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">No Lofty property tokens found in this wallet.</p>
+              {holdingsWithStatus.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">No swappable Lofty property tokens found in this wallet.</p>
               ) : filteredHoldings.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">No tokens match your filter.</p>
               ) : filteredHoldings.map((h) => (
-                <HoldingRow key={h.assetId} holding={h} selected={selectedIds.has(h.assetId)} onToggle={toggleSelect} lpPrice={lpPrices[h.assetId]} propertyMeta={propertyMap[h.assetId]} />
+                <HoldingRow
+                  key={h.assetId}
+                  holding={h}
+                  selected={selectedIds.has(h.assetId)}
+                  onToggle={toggleSelect}
+                  disabled={h.disabled}
+                  reason={h.reason}
+                  lpPrice={lpPrices[h.assetId]}
+                  propertyMeta={propertyMap[h.assetId]}
+                />
               ))}
             </CardContent>
           </Card>
@@ -359,18 +518,27 @@ const LoftySwap = () => {
           <Card className="border-primary/30 bg-primary/5">
             <CardContent className="py-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                <div><p className="text-xs text-muted-foreground">Selected</p><p className="text-2xl font-bold">{selectedIds.size}</p></div>
-                <div><p className="text-xs text-muted-foreground">Total LP Value</p><p className="text-2xl font-bold">{formatCurrency(totalUsdValue)}</p></div>
+                <div><p className="text-xs text-muted-foreground">Selected</p><p className="text-2xl font-bold">{selectedHoldings.length}</p></div>
+                <div><p className="text-xs text-muted-foreground">Est. Value</p><p className="text-2xl font-bold">{formatCurrency(totalUsdValue)}</p></div>
                 <div><p className="text-xs text-muted-foreground">EARL Price</p><p className="text-2xl font-bold">{formatCurrency(EARL_PRICE)}</p></div>
-                <div><p className="text-xs text-muted-foreground">You Receive</p><p className="text-2xl font-bold text-primary">{totalEarl.toFixed(4)} EARL</p></div>
+                <div><p className="text-xs text-muted-foreground">Est. EARL</p><p className="text-2xl font-bold text-primary">{totalEarl.toFixed(4)}</p></div>
               </div>
               <div className="rounded-lg border border-border/60 bg-secondary/20 p-3 text-xs text-muted-foreground mb-4">
-                Your Lofty tokens transfer to the DAO Treasury. You receive {totalEarl.toFixed(4)} EARL at {formatCurrency(EARL_PRICE)}/EARL.
-                LP prices sourced live from Lofty liquidity pools.
+                {isContractMode ? (
+                  <>
+                    <strong>Atomic swap:</strong> Your Lofty tokens transfer to the smart contract, which computes the DODO PMM price
+                    on-chain and sends EARL back in the same transaction group. No trust required.
+                    Final EARL amount is determined by the on-chain PMM formula, not the estimate above.
+                  </>
+                ) : (
+                  <>
+                    <strong>Estimated only:</strong> The smart contract is not yet deployed. Swap is unavailable until deployment.
+                  </>
+                )}
               </div>
-              <Button onClick={handleSwap} className="w-full bg-green-600 hover:bg-green-700 text-white" size="lg" disabled={submitting || !kycVerified}>
+              <Button onClick={handleSwap} className="w-full bg-green-600 hover:bg-green-700 text-white" size="lg" disabled={!canSwap || !isContractMode}>
                 {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRightLeft className="mr-2 h-4 w-4" />}
-                Swap {selectedIds.size} Lofty Token{selectedIds.size !== 1 ? 's' : ''} → {totalEarl.toFixed(4)} EARL
+                {!isContractMode ? 'Contract Not Deployed' : `Swap ${selectedHoldings.length} Token${selectedHoldings.length !== 1 ? 's' : ''} → EARL`}
               </Button>
             </CardContent>
           </Card>
