@@ -19,6 +19,8 @@ export const USDC_ASA_ID = Number(firstNonEmpty(import.meta.env.VITE_USDC_ASA_ID
 export const GOBTC_ASA_ID = Number(firstNonEmpty(import.meta.env.VITE_GOBTC_ASA_ID) || '386192725');
 export const GOBTC_DECIMALS = 8;
 export const GOV_APP_ID = Number(import.meta.env.VITE_GOV_APP_ID || '0');
+export const TREASURY_ESCROW_APP_ID = Number(import.meta.env.VITE_TREASURY_ESCROW_APP_ID || '3516307746');
+export const VOTE_DELEGATION_APP_ID = Number(import.meta.env.VITE_VOTE_DELEGATION_APP_ID || '3516309799');
 
 export const STRIPE_PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
 export const EARL_STRIPE_PRICE_ID = import.meta.env.VITE_EARL_STRIPE_PRICE_ID || '';

@@ -375,7 +375,7 @@ const OrderStatusCard = ({ user }) => {
 const TradeForm = ({ price, kycVerified }) => {
   const { toast } = useToast();
   const { user } = useAuth();
-  const { isConnected, accountAddress, handleConnect, peraWallet } = useAppContext();
+  const { isConnected, accountAddress, handleConnect, peraWallet, signTransactions } = useAppContext();
   const [usdcAmount, setUsdcAmount] = useState('');
   const [earlAmount, setEarlAmount] = useState('');
   const [activeTab, setActiveTab] = useState('buy');
@@ -682,6 +682,8 @@ const TradeForm = ({ price, kycVerified }) => {
       const paymentAssetId = activeTab === 'buy' ? USDC_ASA_ID : EARL_ASA_ID;
       const paymentAmount = activeTab === 'buy' ? toBaseUnits(requestedUsdcTotal) : quantityBaseUnits;
 
+      // Treasury wallet is the escrow — backend settles with hardened edge functions
+      // (server-side pricing, idempotent conditional updates, atomic balance RPCs).
       const { data: order, error: orderError } = await supabase
         .from('treasury_orders')
         .insert({
@@ -722,12 +724,9 @@ const TradeForm = ({ price, kycVerified }) => {
         suggestedParams: params,
         note: new TextEncoder().encode(`treasury_order:${order.id}:${purchaseType}`),
       });
-
       txns.push(paymentTxn);
 
-      if (txns.length > 1) {
-        algosdk.assignGroupID(txns);
-      }
+      if (txns.length > 1) algosdk.assignGroupID(txns);
 
       const signedTxns = await peraWallet.signTransaction([txns.map((txn) => ({ txn, signers: [accountAddress] }))], accountAddress);
       const paymentTxId = paymentTxn.txID().toString();

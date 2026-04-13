@@ -151,10 +151,12 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Auth: accept either the cron secret or a valid Supabase service key.
-    const authHeader = req.headers.get('Authorization') ?? '';
+    // Auth: only accept the cron secret. Fail closed if not configured.
+    if (!GOV_CRON_SECRET) {
+      return jsonResponse(500, { error: 'GOV_CRON_SECRET not configured' });
+    }
     const cronToken = req.headers.get('x-cron-secret') ?? '';
-    if (GOV_CRON_SECRET && cronToken !== GOV_CRON_SECRET && !authHeader.includes(PROJECT_SECRET_KEY)) {
+    if (cronToken !== GOV_CRON_SECRET) {
       return jsonResponse(401, { error: 'Unauthorized' });
     }
 
@@ -213,12 +215,17 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // BTC deposit confirmed — update order and attempt EARL settlement.
-      await supabaseAdmin.from('treasury_orders').update({
+      // BTC deposit confirmed — conditional update to prevent double-settlement.
+      const { data: claimed } = await supabaseAdmin.from('treasury_orders').update({
         status: 'btc_deposit_confirmed',
         payment_tx_id: deposit.txid,
         updated_at: new Date().toISOString(),
-      }).eq('id', orderId);
+      }).eq('id', orderId).eq('status', 'awaiting_btc_deposit').select('id').maybeSingle();
+
+      if (!claimed) {
+        results[orderId] = 'already_claimed';
+        continue;
+      }
 
       // Settle EARL to the user's Algorand wallet if provided and opted in.
       const earlAmount = BigInt(order.quantity_base_units);

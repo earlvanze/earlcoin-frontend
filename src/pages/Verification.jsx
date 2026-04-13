@@ -11,8 +11,9 @@ import React, { useState, useEffect } from 'react';
     import { useToast } from '@/components/ui/use-toast';
     import { supabase } from '@/lib/customSupabaseClient';
     import { loadStripe } from '@stripe/stripe-js';
+    import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
 
-    const stripePromise = loadStripe('pk_live_51RmvAnB1j8uA46lA73UjlFW3ykqG1Y6MPNTww6qfNKSnCbB99pnitadSMLjnhbJH6YdLNmORL8e0waarsuE6Y6Ev00jKURgb6y');
+    const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null;
 
     const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.1 } } };
     const itemVariants = { hidden: { y: 20, opacity: 0 }, visible: { y: 0, opacity: 1, transition: { type: 'spring' } } };
@@ -23,6 +24,7 @@ import React, { useState, useEffect } from 'react';
         const { kycVerified, hasVerificationNft } = useAppContext();
         const [loading, setLoading] = useState(false);
         const navigate = useNavigate();
+        const canBypassVerification = import.meta.env.DEV && typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
         const startVerification = async () => {
             if (!user) {
@@ -31,13 +33,20 @@ import React, { useState, useEffect } from 'react';
             }
             setLoading(true);
             try {
+                if (!stripePromise) {
+                    throw new Error('Stripe Identity is not configured for verification yet.');
+                }
+
                 const { data, error } = await supabase.functions.invoke('stripe-identity-session', {
                     body: JSON.stringify({ user_id: user.id }),
                 });
 
                 if (error || data.error) throw new Error(error?.message || data.error);
 
-                const { client_secret } = data;
+                const { client_secret, session_id } = data;
+                if (session_id) {
+                    localStorage.setItem('stripe_kyc_session_id', session_id);
+                }
                 const stripe = await stripePromise;
                 const result = await stripe.verifyIdentity(client_secret);
 
@@ -48,6 +57,7 @@ import React, { useState, useEffect } from 'react';
                 }
 
             } catch (error) {
+                localStorage.removeItem('stripe_kyc_session_id');
                 toast({ variant: 'destructive', title: 'Verification Failed', description: error.message });
             } finally {
                 setLoading(false);
@@ -55,6 +65,10 @@ import React, { useState, useEffect } from 'react';
         };
 
         const handleBypassVerification = async () => {
+            if (!canBypassVerification) {
+                toast({ variant: 'destructive', title: 'Bypass disabled', description: 'Client-side KYC bypass is blocked outside local development.' });
+                return;
+            }
             if (!user) {
                 toast({ variant: 'destructive', title: 'Not Logged In', description: 'Please log in to bypass verification.' });
                 return;
@@ -70,7 +84,7 @@ import React, { useState, useEffect } from 'react';
 
                 toast({
                     title: "Verification Bypassed!",
-                    description: "Proceeding to NFT minting for testing.",
+                    description: "Proceeding to NFT minting for local testing.",
                 });
                 navigate('/verification-complete');
             } catch (error) {
@@ -114,10 +128,12 @@ import React, { useState, useEffect } from 'react';
                 button: (
                     <div className="flex flex-col space-y-2 w-full max-w-xs">
                         <Button onClick={startVerification} className="bg-gradient-to-r from-purple-600 to-indigo-600" disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Start Verification"}</Button>
-                        <Button onClick={handleBypassVerification} variant="outline" disabled={loading}>
-                            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FlaskConical className="mr-2 h-4 w-4" />}
-                            Bypass (Dev Mode)
-                        </Button>
+                        {canBypassVerification ? (
+                            <Button onClick={handleBypassVerification} variant="outline" disabled={loading}>
+                                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FlaskConical className="mr-2 h-4 w-4" />}
+                                Bypass (Dev Mode)
+                            </Button>
+                        ) : null}
                     </div>
                 )
             };

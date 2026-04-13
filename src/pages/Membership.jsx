@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
     import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
     import { useToast } from '@/components/ui/use-toast';
     import { Gem, CheckCircle, Loader2, PartyPopper } from 'lucide-react';
-    import { useAuth } from '@/contexts/AuthContext.jsx';
+    import { useAuth } from '@/contexts/SupabaseAuthContext';
     import { supabase } from '@/lib/customSupabaseClient';
     import { useSearchParams } from 'react-router-dom';
     import { STRIPE_PUBLISHABLE_KEY, MEMBERSHIP_STRIPE_PRICE_ID } from '@/lib/config';

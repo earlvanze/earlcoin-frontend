@@ -243,11 +243,16 @@ Deno.serve(async (req) => {
       return jsonResponse(400, { error: 'Payment amount does not match treasury order' });
     }
 
-    await supabaseAdmin.from('treasury_orders').update({
+    // Conditional update to prevent double-settlement from concurrent requests.
+    const { data: claimed } = await supabaseAdmin.from('treasury_orders').update({
       payment_tx_id: paymentTxId,
       status: 'wallet_payment_confirmed',
       updated_at: new Date().toISOString(),
-    }).eq('id', order.id);
+    }).eq('id', order.id).in('status', ['created', 'paid']).select('id').maybeSingle();
+
+    if (!claimed) {
+      return jsonResponse(200, { ok: true, status: order.status, message: 'Already being processed' });
+    }
 
     if (order.purchase_type === 'wallet_buy_earl' || order.purchase_type === 'wallet_buy_earl_gobtc') {
       if (!EARL_ASA_ID) {

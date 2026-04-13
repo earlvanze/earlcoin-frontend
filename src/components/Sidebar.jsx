@@ -2,7 +2,7 @@ import React, { useState } from 'react';
     import { NavLink, useNavigate } from 'react-router-dom';
     import { motion, AnimatePresence } from 'framer-motion';
     import { Button } from '@/components/ui/button';
-    import { LayoutDashboard, FileText, Briefcase, Repeat, LogIn, LogOut, ChevronsRight, HeartHandshake as Handshake, ShieldCheck, Bot } from 'lucide-react';
+    import { LayoutDashboard, FileText, Briefcase, Repeat, LogIn, LogOut, ChevronsRight, HeartHandshake as Handshake, ShieldCheck, Bot, ArrowRightLeft } from 'lucide-react';
     import { useAuth } from '@/contexts/SupabaseAuthContext';
 
     const navItems = [
@@ -12,6 +12,7 @@ import React, { useState } from 'react';
       { to: '/trade', icon: Repeat, label: 'Trade' },
       { to: '/delegate', icon: Handshake, label: 'Delegate' },
       { to: '/lofty-deals', icon: Bot, label: 'Lofty Deals' },
+      { to: '/lofty-swap', icon: ArrowRightLeft, label: 'Lofty Swap' },
       { to: '/verification', icon: ShieldCheck, label: 'Verification' },
     ];
 

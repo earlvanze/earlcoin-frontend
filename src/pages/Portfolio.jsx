@@ -206,9 +206,12 @@ import React from 'react';
               <CardContent>
                 <div className="text-2xl font-bold">{formatUSD(totalGross)}</div>
                 <p className="text-xs text-muted-foreground">{allProperties.length} tokenized properties @ market price</p>
-                {onChainFmv !== totalGross && (
-                  <p className="text-xs text-green-400">FMV basis: {formatUSD(onChainFmv)} ({onChainFmv > totalGross ? '+' : ''}{formatUSD(onChainFmv - totalGross)})</p>
-                )}
+                {onChainFmv !== totalGross && (() => {
+                  const fmvPct = totalGross > 0 ? ((onChainFmv - totalGross) / totalGross) * 100 : 0;
+                  return (
+                    <p className="text-xs text-green-400">FMV basis: {formatUSD(onChainFmv)} ({fmvPct > 0 ? '+' : ''}{fmvPct.toFixed(1)}%)</p>
+                  );
+                })()}
               </CardContent>
             </Card>
           </motion.div>
