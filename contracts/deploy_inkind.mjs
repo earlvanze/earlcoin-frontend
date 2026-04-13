@@ -53,8 +53,29 @@ const approvalTeal = fs.readFileSync(path.join(__dirname, 'build/inkind_exchange
 const clearTeal = fs.readFileSync(path.join(__dirname, 'build/inkind_exchange_clear.teal'), 'utf8');
 
 async function main() {
+  // Step 0: Delete previous failed app if it exists
+  const PREV_APP_ID = 3518919406;
+  try {
+    const prevInfo = await algod.getApplicationByID(PREV_APP_ID).do();
+    if (prevInfo.params.creator === deployerAddr) {
+      console.log(`Deleting previous failed app ${PREV_APP_ID}...`);
+      const delParams = await algod.getTransactionParams().do();
+      const delTxn = algosdk.makeApplicationDeleteTxnFromObject({
+        from: deployerAddr,
+        appIndex: PREV_APP_ID,
+        suggestedParams: delParams,
+      });
+      const signedDel = delTxn.signTxn(deployer.sk);
+      await algod.sendRawTransaction(signedDel).do();
+      await algosdk.waitForConfirmation(algod, delTxn.txID(), 10);
+      console.log('  Previous app deleted');
+    }
+  } catch (e) {
+    console.log('  No previous app to delete');
+  }
+
   // Step 1: Compile TEAL
-  console.log('Compiling TEAL programs...');
+  console.log('\nCompiling TEAL programs...');
   const approvalCompiled = await algod.compile(Buffer.from(approvalTeal)).do();
   const clearCompiled = await algod.compile(Buffer.from(clearTeal)).do();
 
@@ -71,12 +92,12 @@ async function main() {
     approvalProgram,
     clearProgram,
     numGlobalByteSlices: 1,   // admin address
-    numGlobalInts: 4,          // earl_asa, vnft_asa, earl_price, paused (+ num_accepted in boxes)
+    numGlobalInts: 5,          // earl_asa, vnft_asa, earl_price, paused, num_accepted
     numLocalByteSlices: 0,
     numLocalInts: 0,
     suggestedParams: params,
     onComplete: algosdk.OnApplicationComplete.NoOpOC,
-    extraPages: 2,             // boxes need extra pages
+    extraPages: 1,             // boxes need extra page (1 is enough for ~8 ASAs)
   });
 
   const signed = txn.signTxn(deployer.sk);
@@ -95,7 +116,7 @@ async function main() {
   const fundTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
     from: deployerAddr,
     to: appAddr,
-    amount: 500_000, // 0.5 ALGO for MBR + box storage
+    amount: 200_000, // 0.2 ALGO minimum for app MBR
     suggestedParams: fundParams,
   });
   const signedFund = fundTxn.signTxn(deployer.sk);

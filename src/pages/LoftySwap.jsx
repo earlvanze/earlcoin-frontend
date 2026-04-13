@@ -210,6 +210,7 @@ const LoftySwap = () => {
   const [holdings, setHoldings] = useState([]);
   const [lpPrices, setLpPrices] = useState({});
   const [propertyMap, setPropertyMap] = useState({});
+  const [appOptedInAsas, setAppOptedInAsas] = useState(new Set());
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -238,6 +239,17 @@ const LoftySwap = () => {
           filtered = [];
         }
 
+        // Fetch app's opt-in status for ASA readiness check
+        let optedIn = new Set();
+        if (appId && appId > 0) {
+          try {
+            const appAddr = algosdk.getApplicationAddress(appId);
+            const appAcct = await algodClient.accountInformation(appAddr).do();
+            optedIn = new Set((appAcct.assets || []).map(a => a['asset-id']));
+          } catch { /* ignore — will show all as needing setup */ }
+        }
+        setAppOptedInAsas(optedIn);
+
         setHoldings(filtered);
         setLpPrices(prices);
         setPropertyMap(meta);
@@ -264,14 +276,17 @@ const LoftySwap = () => {
       // Check if we have LP app IDs for on-chain pricing
       const meta = propertyMap[h.assetId];
       const hasLpApp = !!(meta?.lpInterfaceAppId && meta?.adminAppId);
+      // Check if the smart contract is opted into this ASA
+      const isAppReady = appId && appId > 0 && appOptedInAsas.has(h.assetId);
       let disabled = false;
       let reason = '';
       if (isFrozen) { disabled = true; reason = 'Frozen'; }
       else if (isZeroPrice) { disabled = true; reason = 'No price'; }
       else if (!hasLpApp && appId) { disabled = true; reason = 'No LP data'; }
-      return { ...h, price, disabled, reason };
+      else if (!isAppReady && appId) { disabled = true; reason = 'Not yet available'; }
+      return { ...h, price, disabled, reason, isAppReady };
     });
-  }, [holdings, lpPrices, propertyMap, appId]);
+  }, [holdings, lpPrices, propertyMap, appId, appOptedInAsas]);
 
   const filteredHoldings = useMemo(() => {
     if (!searchFilter.trim()) return holdingsWithStatus;
@@ -407,6 +422,7 @@ const LoftySwap = () => {
   const frozenCount = holdingsWithStatus.filter(h => h.defaultFrozen).length;
   const noPriceCount = holdingsWithStatus.filter(h => !h.defaultFrozen && h.price <= 0).length;
   const noLpDataCount = holdingsWithStatus.filter(h => !h.defaultFrozen && h.price > 0 && h.disabled && h.reason === 'No LP data').length;
+  const notReadyCount = holdingsWithStatus.filter(h => !h.defaultFrozen && h.price > 0 && h.disabled && h.reason === 'Not yet available').length;
   const isContractMode = appId && appId > 0;
 
   return (
@@ -473,6 +489,7 @@ const LoftySwap = () => {
                   </CardTitle>
                   <CardDescription>
                     {swappableCount} swappable
+                    {notReadyCount > 0 && ` · ${notReadyCount} pending setup`}
                     {frozenCount > 0 && ` · ${frozenCount} frozen`}
                     {noPriceCount > 0 && ` · ${noPriceCount} no price`}
                     {noLpDataCount > 0 && ` · ${noLpDataCount} no LP data`}
