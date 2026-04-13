@@ -48,30 +48,44 @@ function isLpToken(unitName, name) {
 }
 
 async function fetchLoftyHoldings(walletAddress) {
-  const url = `${INDEXER_BASE}/v2/accounts/${walletAddress}/assets?limit=200`;
+  const url = `${INDEXER_BASE}/v2/accounts/${walletAddress}?include=all`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Indexer error: ${res.status}`);
   const data = await res.json();
   const assets = (data.assets || []).filter((a) => a.amount > 0);
+  if (assets.length === 0) return [];
+
+  // Batch asset lookups — use account response which already includes creator info
+  // for assets created by the account holder. For Lofty tokens, we need to check
+  // if each asset's creator is in LOFTY_CREATORS.
+  // Strategy: fetch all assets in parallel (max 10 concurrent) and filter by creator.
+  const batchSize = 10;
   const holdings = [];
-  for (const asset of assets) {
-    try {
-      const assetRes = await fetch(`${INDEXER_BASE}/v2/assets/${asset['asset-id']}`);
-      if (!assetRes.ok) continue;
-      const assetData = await assetRes.json();
-      const params = assetData?.asset?.params || {};
-      if (LOFTY_CREATORS.has(params.creator || '')) {
-        holdings.push({
-          assetId: asset['asset-id'],
-          amount: asset.amount,
-          decimals: params.decimals || 0,
-          name: params.name || `ASA ${asset['asset-id']}`,
-          unitName: params['unit-name'] || '',
-          defaultFrozen: params['default-frozen'] || false,
-          total: params.total || 0,
-        });
-      }
-    } catch { /* skip */ }
+  for (let i = 0; i < assets.length; i += batchSize) {
+    const batch = assets.slice(i, i + batchSize);
+    const results = await Promise.allSettled(
+      batch.map(async (asset) => {
+        try {
+          const assetRes = await fetch(`${INDEXER_BASE}/v2/assets/${asset['asset-id']}`);
+          if (!assetRes.ok) return null;
+          const assetData = await assetRes.json();
+          const params = assetData?.asset?.params || {};
+          if (!LOFTY_CREATORS.has(params.creator || '')) return null;
+          return {
+            assetId: asset['asset-id'],
+            amount: asset.amount,
+            decimals: params.decimals || 0,
+            name: params.name || `ASA ${asset['asset-id']}`,
+            unitName: params['unit-name'] || '',
+            defaultFrozen: params['default-frozen'] || false,
+            total: params.total || 0,
+          };
+        } catch { return null; }
+      })
+    );
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value) holdings.push(r.value);
+    }
   }
   return holdings;
 }

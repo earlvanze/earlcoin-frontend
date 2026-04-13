@@ -113,6 +113,8 @@ const AlphaCard = ({ deal }) => {
             nav_per_token: deal.nav_per_token || '',
             alpha_percent: alphaPercent,
             proposal_draft: deal.proposal_draft || '',
+            shares: deal.recommended_shares || 100,  // Use position sizing from Compass Yield
+            lp_depth: deal.lp_depth_tokens || '',
         });
         
         navigate(`/proposals/new?${params.toString()}`);
@@ -207,10 +209,17 @@ const AlphaCard = ({ deal }) => {
                 </div>
                 
                 <div className="flex items-center justify-between px-3 py-2 bg-secondary/20 border-t">
-                    <span className="text-sm">
-                        <span className="text-muted-foreground">Upside:</span>
-                        <span className="ml-1 font-bold text-green-400">+${((deal.nav_per_token || 0) - (deal.market_price || 0)).toFixed(2)}</span>
-                    </span>
+                    <div className="flex flex-col gap-0.5">
+                        <span className="text-sm">
+                            <span className="text-muted-foreground">Upside:</span>
+                            <span className="ml-1 font-bold text-green-400">+${((deal.nav_per_token || 0) - (deal.market_price || 0)).toFixed(2)}</span>
+                        </span>
+                        {deal.recommended_shares && deal.recommended_shares > 0 && (
+                            <span className="text-[10px] text-muted-foreground">
+                                Position: {deal.recommended_shares} tokens (~${deal.position_size_usd?.toLocaleString() || Math.round(deal.recommended_shares * (deal.market_price || 0)).toLocaleString()})
+                            </span>
+                        )}
+                    </div>
                     <Button size="sm" onClick={handleCreateProposal} className="h-7 text-xs bg-gradient-to-r from-purple-600 to-indigo-600">
                         <FilePlus className="mr-1 h-3 w-3" /> Proposal
                     </Button>
@@ -417,6 +426,7 @@ const CashflowCard = ({ deal }) => {
             coc: coc,
             cap_rate: capRate,
             proposal_draft: investmentThesis || '',
+            shares: deal.recommended_shares || 100,  // Use position sizing from Compass Yield
         });
         navigate(`/proposals/new?${params.toString()}`);
         toast({ title: "Creating Proposal", description: `Drafting proposal for ${deal.address}` });

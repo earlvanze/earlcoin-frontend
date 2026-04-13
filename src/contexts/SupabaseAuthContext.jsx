@@ -75,7 +75,14 @@ export const AuthProvider = ({ children }) => {
   }, [handleSession]);
 
   const signUp = useCallback(async (email, password, options) => {
-    const { error } = await supabase.auth.signUp({ email, password, options });
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        ...options,
+      },
+    });
     showAuthError('Sign up Failed', error);
     return { error };
   }, [showAuthError]);
