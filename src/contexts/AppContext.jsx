@@ -18,6 +18,7 @@ export const AppProvider = ({ children }) => {
     const [walletProvider, setWalletProvider] = useState(null);
     const [hasVerificationNft, setHasVerificationNft] = useState(false);
     const [kycVerified, setKycVerified] = useState(false);
+    const [hasMembership, setHasMembership] = useState(false);
     const [notifications, setNotifications] = useState([]);
 
     useEffect(() => {
@@ -77,8 +78,34 @@ export const AppProvider = ({ children }) => {
         return { kycVerified: nextKycVerified, hasVerificationNft: nextHasVerificationNft };
     }, [accountAddress, user]);
 
+    const checkMembership = useCallback(async () => {
+        if (!user || !accountAddress) {
+            setHasMembership(false);
+            return false;
+        }
+
+        try {
+            const { data, error } = await supabase.functions.invoke('check-membership', {
+                body: JSON.stringify({ wallet_address: accountAddress }),
+            });
+
+            if (error || data?.error) {
+                console.error('check-membership error:', error || data?.error);
+                return false;
+            }
+
+            const isMember = !!data?.has_membership;
+            setHasMembership(isMember);
+            return isMember;
+        } catch (e) {
+            console.error('check-membership failed:', e);
+            return false;
+        }
+    }, [user, accountAddress]);
+
     useEffect(() => {
         refreshVerificationState();
+        checkMembership();
 
         if (!user) {
             return undefined;
@@ -96,7 +123,7 @@ export const AppProvider = ({ children }) => {
             supabase.removeChannel(channel);
           }
 
-    }, [refreshVerificationState, user]);
+    }, [refreshVerificationState, checkMembership, user]);
 
     const handleConnect = async () => {
         try {
@@ -108,6 +135,7 @@ export const AppProvider = ({ children }) => {
                 title: "Wallet Connected",
                 description: "Algorand wallet connected via WalletConnect.",
             });
+            checkMembership();
         } catch (error) {
             if (error?.data?.type !== "CONNECT_MODAL_CLOSED") {
                 toast({
@@ -125,6 +153,7 @@ export const AppProvider = ({ children }) => {
         setAccountAddress(null);
         setWalletProvider(null);
         setHasVerificationNft(false);
+        setHasMembership(false);
         toast({
             title: "Wallet Disconnected",
             description: "Your Algorand wallet has been disconnected.",
@@ -161,6 +190,8 @@ export const AppProvider = ({ children }) => {
         hasVerificationNft,
         setHasVerificationNft,
         kycVerified,
+        hasMembership,
+        checkMembership,
         notifications,
         isConnected,
         accountAddress,
@@ -170,7 +201,7 @@ export const AppProvider = ({ children }) => {
         peraWallet,
         signTransactions,
         refreshVerificationState,
-    }), [verificationStatus, hasVerificationNft, kycVerified, notifications, isConnected, accountAddress, walletProvider, signTransactions, refreshVerificationState]);
+    }), [verificationStatus, hasVerificationNft, kycVerified, hasMembership, notifications, isConnected, accountAddress, walletProvider, signTransactions, refreshVerificationState, checkMembership]);
 
     return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 };
