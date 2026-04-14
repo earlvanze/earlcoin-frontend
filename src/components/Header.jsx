@@ -1,6 +1,6 @@
 
 import React from 'react';
-    import { Bell, LogIn, LogOut, User, Settings as SettingsIcon, Gem, Wallet } from 'lucide-react';
+    import { Bell, LogIn, LogOut, User, Settings as SettingsIcon, Wallet } from 'lucide-react';
     import { Button } from '@/components/ui/button';
     import {
       DropdownMenu,
@@ -76,10 +76,6 @@ import React from 'react';
                   <DropdownMenuItem onClick={() => navigate('/settings')}>
                     <SettingsIcon className="mr-2 h-4 w-4" />
                     <span>Settings</span>
-                  </DropdownMenuItem>
-                   <DropdownMenuItem onClick={() => navigate('/trade')}>
-                    <Gem className="mr-2 h-4 w-4" />
-                    <span>Get EARL Tokens</span>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     {isConnected && accountAddress ? (
