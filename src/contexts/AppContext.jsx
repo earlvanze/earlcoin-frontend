@@ -73,6 +73,20 @@ export const AppProvider = ({ children }) => {
             }
         }
 
+        // Auto-verify via EARL token ownership if not already KYC verified
+        if (!nextKycVerified && accountAddress) {
+            try {
+                const { data: membershipData } = await supabase.functions.invoke('check-membership', {
+                    body: JSON.stringify({ wallet_address: accountAddress }),
+                });
+                if (membershipData?.has_membership) {
+                    nextKycVerified = true;
+                }
+            } catch (e) {
+                // Silently fail — user can still do Stripe KYC manually
+            }
+        }
+
         setKycVerified(nextKycVerified);
         setHasVerificationNft(nextHasVerificationNft);
         return { kycVerified: nextKycVerified, hasVerificationNft: nextHasVerificationNft };

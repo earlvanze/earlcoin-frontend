@@ -8,6 +8,8 @@ const PROJECT_SECRET_KEY = Deno.env.get("PROJECT_SECRET_KEY") ?? "";
 const VNFT_ADMIN_MNEMONIC = Deno.env.get("VNFT_ADMIN_MNEMONIC") ?? "";
 const ALGOD_URL = Deno.env.get("ALGOD_URL") ?? "https://mainnet-api.4160.nodely.dev";
 const INDEXER_URL = Deno.env.get("INDEXER_URL") ?? "https://mainnet-idx.4160.nodely.dev";
+const EARL_ASA_ID = Number(Deno.env.get("EARL_ASA_ID") ?? "3497993904");
+
 const indexerClient = new algosdk.Indexer("", INDEXER_URL, "");
 
 function jsonResponse(status: number, body: Record<string, unknown>) {
@@ -42,6 +44,20 @@ async function findExistingVnftAsset(adminAddress: string, assetName: string) {
     return latest?.index ?? null;
   } catch {
     return null;
+  }
+}
+
+async function checkEarlOwnership(walletAddress: string): Promise<boolean> {
+  try {
+    const indexerBase = ALGOD_URL.replace("mainnet-api", "mainnet-idx");
+    const url = `${indexerBase}/v2/accounts/${walletAddress}/assets/${EARL_ASA_ID}`;
+    const res = await fetch(url);
+    if (!res.ok) return false;
+    const data = await res.json();
+    const amount = data?.asset?.["asset-holding"]?.amount ?? data?.amount ?? 0;
+    return amount > 0;
+  } catch {
+    return false;
   }
 }
 
@@ -105,8 +121,21 @@ Deno.serve(async (req) => {
       return jsonResponse(500, { error: profileErr.message ?? "Profile lookup failed", requestId });
     }
 
-    if (!profile?.kyc_verified) {
-      return jsonResponse(403, { error: "KYC not verified", requestId });
+    // Verification: either Stripe KYC verified OR holds EARL tokens
+    const hasEarlTokens = await checkEarlOwnership(walletAddress);
+    const isVerified = !!profile?.kyc_verified || hasEarlTokens;
+
+    if (!isVerified) {
+      return jsonResponse(403, { error: "Verification required — purchase an EARL token or complete KYC", requestId });
+    }
+
+    // Auto-set kyc_verified if holding EARL tokens but not yet flagged
+    if (hasEarlTokens && !profile?.kyc_verified) {
+      await supabase
+        .from("profiles")
+        .update({ kyc_verified: true, updated_at: new Date().toISOString() })
+        .eq("id", authData.user.id);
+      console.log("mint-vnft:auto-verified", { requestId, walletAddress });
     }
 
     if (profile?.vnft_asset_id) {
