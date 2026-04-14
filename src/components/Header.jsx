@@ -77,9 +77,9 @@ import React from 'react';
                     <SettingsIcon className="mr-2 h-4 w-4" />
                     <span>Settings</span>
                   </DropdownMenuItem>
-                   <DropdownMenuItem onClick={() => navigate('/membership')}>
+                   <DropdownMenuItem onClick={() => navigate('/trade')}>
                     <Gem className="mr-2 h-4 w-4" />
-                    <span>Membership</span>
+                    <span>Get EARL Tokens</span>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     {isConnected && accountAddress ? (
