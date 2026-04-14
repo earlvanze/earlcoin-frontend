@@ -219,6 +219,36 @@ Deno.serve(async (req) => {
         if (!userId) throw new Error('User ID not found in verification session metadata.');
         const { error } = await supabaseAdmin.from('profiles').update({ kyc_verified: true }).eq('id', userId);
         if (error) throw error;
+
+        // Auto-mint VNFT after KYC verification
+        try {
+          const { data: profile } = await supabaseAdmin
+            .from('profiles')
+            .select('vnft_asset_id, vnft_wallet')
+            .eq('id', userId)
+            .single();
+
+          if (!profile?.vnft_asset_id) {
+            // Trigger mint-vnft internally
+            const walletAddress = profile?.vnft_wallet || session.metadata?.wallet_address;
+            if (walletAddress) {
+              const mintRes = await fetch(`${PROJECT_URL}/functions/v1/mint-vnft`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${PROJECT_SECRET_KEY}`,
+                  'apikey': PROJECT_SECRET_KEY,
+                },
+                body: JSON.stringify({ wallet_address: walletAddress, user_id: userId, _internal: true }),
+              });
+              const mintData = await mintRes.json().catch(() => ({}));
+              console.log('stripe-webhook:auto-mint-vnft', { userId, walletAddress, status: mintRes.status, mintStatus: mintData?.status, assetId: mintData?.assetId });
+            }
+          }
+        } catch (mintErr) {
+          // Non-fatal: user can still mint manually from verification-complete page
+          console.error('stripe-webhook:auto-mint-vnft-failed', { userId, error: String(mintErr) });
+        }
         break;
       }
       case 'checkout.session.completed': {

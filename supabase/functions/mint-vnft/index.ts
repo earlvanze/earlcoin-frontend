@@ -91,18 +91,11 @@ Deno.serve(async (req) => {
       return jsonResponse(401, { error: "Missing Authorization header", requestId });
     }
 
-    const supabase = createClient(PROJECT_URL, PROJECT_SECRET_KEY, {
-      global: { headers: { Authorization: authHeader } },
-    });
-
-    const { data: authData, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !authData?.user) {
-      console.error("mint-vnft:auth-error", { requestId, authErr: serializeError(authErr) });
-      return jsonResponse(401, { error: authErr?.message ?? "Unauthorized", requestId });
-    }
-
     const body = await req.json();
     const walletAddress = body?.wallet_address;
+    const isInternal = !!body?._internal;
+    const internalUserId = body?.user_id;
+
     if (!walletAddress) {
       return jsonResponse(400, { error: "wallet_address required", requestId });
     }
@@ -110,10 +103,28 @@ Deno.serve(async (req) => {
       return jsonResponse(400, { error: "wallet_address invalid", requestId });
     }
 
+    const supabase = createClient(PROJECT_URL, PROJECT_SECRET_KEY, {
+      global: isInternal ? {} : { headers: { Authorization: authHeader } },
+    });
+
+    let userId: string;
+
+    if (isInternal && internalUserId) {
+      // Internal call from stripe-webhook — service role, no user JWT
+      userId = internalUserId;
+    } else {
+      const { data: authData, error: authErr } = await supabase.auth.getUser();
+      if (authErr || !authData?.user) {
+        console.error("mint-vnft:auth-error", { requestId, authErr: serializeError(authErr) });
+        return jsonResponse(401, { error: authErr?.message ?? "Unauthorized", requestId });
+      }
+      userId = authData.user.id;
+    }
+
     const { data: profile, error: profileErr } = await supabase
       .from("profiles")
       .select("kyc_verified, vnft_asset_id, vnft_wallet")
-      .eq("id", authData.user.id)
+      .eq("id", userId)
       .single();
 
     if (profileErr) {
@@ -121,9 +132,9 @@ Deno.serve(async (req) => {
       return jsonResponse(500, { error: profileErr.message ?? "Profile lookup failed", requestId });
     }
 
-    // Verification: either Stripe KYC verified OR holds EARL tokens
+    // Verification: either Stripe KYC verified OR holds EARL tokens OR internal call from webhook
     const hasEarlTokens = await checkEarlOwnership(walletAddress);
-    const isVerified = !!profile?.kyc_verified || hasEarlTokens;
+    const isVerified = isInternal || !!profile?.kyc_verified || hasEarlTokens;
 
     if (!isVerified) {
       return jsonResponse(403, { error: "Verification required — purchase an EARL token or complete KYC", requestId });
@@ -134,7 +145,7 @@ Deno.serve(async (req) => {
       await supabase
         .from("profiles")
         .update({ kyc_verified: true, updated_at: new Date().toISOString() })
-        .eq("id", authData.user.id);
+        .eq("id", userId);
       console.log("mint-vnft:auto-verified", { requestId, walletAddress });
     }
 
@@ -143,7 +154,7 @@ Deno.serve(async (req) => {
         await supabase
           .from("profiles")
           .update({ vnft_wallet: walletAddress })
-          .eq("id", authData.user.id);
+          .eq("id", userId);
       }
       return jsonResponse(200, {
         assetId: profile.vnft_asset_id,
@@ -185,13 +196,13 @@ Deno.serve(async (req) => {
     const algodClient = new algosdk.Algodv2("", ALGOD_URL, "");
     const params = await algodClient.getTransactionParams().do();
 
-    const assetName = `EarlCoin Verification #${authData.user.id.slice(0, 6)}`;
+    const assetName = `EarlCoin Verification #${userId.slice(0, 6)}`;
     const existingAssetId = await findExistingVnftAsset(adminAddress, assetName);
     if (existingAssetId) {
       await supabase
         .from("profiles")
         .update({ vnft_asset_id: existingAssetId, vnft_wallet: walletAddress })
-        .eq("id", authData.user.id);
+        .eq("id", userId);
       return jsonResponse(200, {
         assetId: existingAssetId,
         txId: null,
@@ -254,7 +265,7 @@ Deno.serve(async (req) => {
       await supabase
         .from("profiles")
         .update({ vnft_asset_id: assetId, vnft_wallet: walletAddress })
-        .eq("id", authData.user.id);
+        .eq("id", userId);
     }
 
     return jsonResponse(200, { assetId, txId, adminAddress, requestId });
