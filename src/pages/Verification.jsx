@@ -127,7 +127,14 @@ import React, { useState, useEffect } from 'react';
                 description: "To participate in governance and trading, you must complete a one-time KYC/AML check. This ensures our DAO's compliance and security.", 
                 button: (
                     <div className="flex flex-col space-y-2 w-full max-w-xs">
-                        <Button onClick={startVerification} className="bg-gradient-to-r from-purple-600 to-indigo-600" disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Start Verification"}</Button>
+                        {STRIPE_PUBLISHABLE_KEY ? (
+                            <Button onClick={startVerification} className="bg-gradient-to-r from-purple-600 to-indigo-600" disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Start Verification"}</Button>
+                        ) : (
+                            <div className="text-center space-y-2">
+                                <Button disabled className="bg-gradient-to-r from-purple-600 to-indigo-600 opacity-50">Start Verification</Button>
+                                <p className="text-xs text-muted-foreground">Identity verification is being configured. Please check back soon or contact support.</p>
+                            </div>
+                        )}
                         {canBypassVerification ? (
                             <Button onClick={handleBypassVerification} variant="outline" disabled={loading}>
                                 {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FlaskConical className="mr-2 h-4 w-4" />}

@@ -18,11 +18,7 @@ export const AppProvider = ({ children }) => {
     const [walletProvider, setWalletProvider] = useState(null);
     const [hasVerificationNft, setHasVerificationNft] = useState(false);
     const [kycVerified, setKycVerified] = useState(false);
-    const [notifications, setNotifications] = useState([
-        { id: 1, title: 'Proposal #12 Passed', description: 'The proposal to increase liquidity rewards has been approved.', read: false },
-        { id: 2, title: 'New Lofty.ai Deal', description: 'A new property in Miami, FL is available for investment.', read: false },
-        { id: 3, title: 'Vote Reminder', description: 'Voting for Proposal #14 ends in 24 hours.', read: true },
-    ]);
+    const [notifications, setNotifications] = useState([]);
 
     useEffect(() => {
         peraWallet.reconnectSession().then((accounts) => {

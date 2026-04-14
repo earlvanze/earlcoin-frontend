@@ -575,21 +575,31 @@ const LoftyDeals = () => {
                     .select('*');
 
                 // Fetch live Lofty property metadata + marketplace whitelist once for all tabs
+                // LoftyAssist may be blocked by CORS or proxy misconfiguration — handle gracefully
+                let cashflowRaw = [];
+                let loftyPropertyLookup = {};
+                let marketplaceIds = new Set();
+
                 const [cashflowRes, marketplaceRes] = await Promise.all([
-                    fetch(LOFTY_API),
-                    fetch(MARKETPLACE_API),
+                    fetch(LOFTY_API).catch(() => null),
+                    fetch(MARKETPLACE_API).catch(() => null),
                 ]);
 
-                if (!cashflowRes.ok) throw new Error(`LoftyAssist error: ${cashflowRes.status}`);
-                if (!marketplaceRes.ok) throw new Error(`Lofty marketplace error: ${marketplaceRes.status}`);
+                if (marketplaceRes?.ok) {
+                    const marketplaceRaw = await marketplaceRes.json();
+                    marketplaceIds = buildMarketplaceIdSet(marketplaceRaw?.data?.properties || []);
+                }
 
-                const [cashflowRaw, marketplaceRaw] = await Promise.all([
-                    cashflowRes.json(),
-                    marketplaceRes.json(),
-                ]);
-
-                const loftyPropertyLookup = buildLoftyPropertyLookup(cashflowRaw || []);
-                const marketplaceIds = buildMarketplaceIdSet(marketplaceRaw?.data?.properties || []);
+                if (cashflowRes?.ok) {
+                    try {
+                        cashflowRaw = await cashflowRes.json();
+                        loftyPropertyLookup = buildLoftyPropertyLookup(cashflowRaw || []);
+                    } catch (e) {
+                        console.warn('LoftyAssist JSON parse failed, continuing without cashflow data', e);
+                    }
+                } else {
+                    console.warn('LoftyAssist fetch failed (CORS or proxy), continuing without cashflow data');
+                }
 
                 const liveCashflowDeals = filterTradableDeals(
                     (cashflowRaw || []).map(normalizeCashflowDeal),
