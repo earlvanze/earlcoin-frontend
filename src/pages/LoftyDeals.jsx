@@ -742,6 +742,24 @@ const LoftyDeals = () => {
               </motion.div>
 
               <TabsContent value="equity">
+                  {alphaDeals.length > 0 && (() => {
+                      const sizedDeals = alphaDeals.filter(d => d.recommended_shares > 0);
+                      const totalAllocation = sizedDeals.reduce((sum, d) => sum + (d.position_size_usd || d.recommended_shares * (d.market_price || 0)), 0);
+                      const totalShares = sizedDeals.reduce((sum, d) => sum + d.recommended_shares, 0);
+                      return sizedDeals.length > 0 ? (
+                          <div className="mb-3 p-3 bg-secondary/30 rounded-lg flex items-center justify-between flex-wrap gap-2">
+                              <div>
+                                  <h3 className="font-semibold text-sm flex items-center gap-1.5"><Target className="h-4 w-4 text-purple-400" /> Compass Yield Sizing</h3>
+                                  <p className="text-xs text-muted-foreground">Half-Kelly • $5k deployable • 5% max per position • min 50% alpha</p>
+                              </div>
+                              <div className="flex gap-4 text-sm">
+                                  <div><span className="text-muted-foreground text-xs">Positions</span><p className="font-bold">{sizedDeals.length}</p></div>
+                                  <div><span className="text-muted-foreground text-xs">Total Shares</span><p className="font-bold">{totalShares.toLocaleString()}</p></div>
+                                  <div><span className="text-muted-foreground text-xs">Allocated</span><p className="font-bold text-green-400">${totalAllocation.toLocaleString(undefined, {maximumFractionDigits: 0})}</p></div>
+                              </div>
+                          </div>
+                      ) : null;
+                  })()}
                   {alphaDeals.length === 0 ? (
                       <Card className="p-8 text-center">
                           <Target className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
