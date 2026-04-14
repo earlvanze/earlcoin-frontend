@@ -669,10 +669,7 @@ const LoftyDeals = () => {
 
                 if (strategyErr) throw strategyErr;
 
-                const enrichedStrategyData = filterTradableDeals(
-                    attachLoftyPropertyMeta(strategyData || [], loftyPropertyLookup),
-                    marketplaceIds,
-                )
+                const enrichedStrategyData = attachLoftyPropertyMeta(strategyData || [], loftyPropertyLookup)
                     .sort((a, b) => {
                         const rankA = typeof a.proposal_rank === 'number' ? a.proposal_rank : Number.POSITIVE_INFINITY;
                         const rankB = typeof b.proposal_rank === 'number' ? b.proposal_rank : Number.POSITIVE_INFINITY;
