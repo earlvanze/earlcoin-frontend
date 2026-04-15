@@ -39,7 +39,10 @@ const formatCurrency = (v, d = 2) =>
 const LOFTY_CREATORS = new Set([
   'GQ46SBJ6Y5CJHJXLPTDBTHFJYEBI4LHPL5MOPCG5B6C4ONOG2RJHTM6VE',
   'LOFTYYD7TVIGMHGLUJLSJPHMQ7WCEIYSVDPSXPWOHXCYHOB3Y5BSBD57VU',
+  'LOFTYRITC3QUX6TVQBGT3BARKWAZDEB2TTJWYQMH6YITKNH7IOMWRLC7SA',
 ]);
+
+const LOFTY_UNIT_PREFIXES = ['LFTY'];
 
 function isLpToken(unitName, name) {
   const u = (unitName || '').toUpperCase();
@@ -70,7 +73,10 @@ async function fetchLoftyHoldings(walletAddress) {
           if (!assetRes.ok) return null;
           const assetData = await assetRes.json();
           const params = assetData?.asset?.params || {};
-          if (!LOFTY_CREATORS.has(params.creator || '')) return null;
+          const isLoftyCreator = LOFTY_CREATORS.has(params.creator || '');
+          const unitName = (params['unit-name'] || '').toUpperCase();
+          const isLoftyUnit = LOFTY_UNIT_PREFIXES.some(p => unitName.startsWith(p));
+          if (!isLoftyCreator && !isLoftyUnit) return null;
           return {
             assetId: asset['asset-id'],
             amount: asset.amount,
