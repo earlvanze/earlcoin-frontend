@@ -15,7 +15,7 @@
 import algosdk from 'algosdk';
 
 const ALGOD_URL = process.env.ALGOD_URL || 'https://mainnet-api.4160.nodely.dev';
-const APP_ID = Number(process.env.INKIND_EXCHANGE_APP_ID || '3516387095');
+const APP_ID = Number(process.env.INKIND_EXCHANGE_APP_ID || '3518922796');
 const EARL_ASA_ID = 3497993904;
 const LP_API = 'https://lp.lofty.ai/prod/liquidity/v1/marketplace';
 const LOFTYASSIST_API = 'https://app.earlco.in/api/lofty.php';

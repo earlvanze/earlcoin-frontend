@@ -21,7 +21,9 @@ export const GOBTC_DECIMALS = 8;
 export const GOV_APP_ID = Number(import.meta.env.VITE_GOV_APP_ID || '0');
 export const TREASURY_ESCROW_APP_ID = Number(import.meta.env.VITE_TREASURY_ESCROW_APP_ID || '3516307746');
 export const VOTE_DELEGATION_APP_ID = Number(import.meta.env.VITE_VOTE_DELEGATION_APP_ID || '3516309799');
-export const INKIND_EXCHANGE_APP_ID = Number(import.meta.env.VITE_INKIND_EXCHANGE_APP_ID || '0');
+// Mainnet in-kind exchange app deployed by GOV_ADMIN. Can be overridden per environment.
+const configuredInkindExchangeAppId = Number(import.meta.env.VITE_INKIND_EXCHANGE_APP_ID || 0);
+export const INKIND_EXCHANGE_APP_ID = configuredInkindExchangeAppId > 0 ? configuredInkindExchangeAppId : 3518922796;
 
 export const STRIPE_PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
 export const EARL_STRIPE_PRICE_ID = import.meta.env.VITE_EARL_STRIPE_PRICE_ID || '';

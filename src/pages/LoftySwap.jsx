@@ -96,6 +96,16 @@ async function fetchLoftyHoldings(walletAddress) {
   return holdings;
 }
 
+const getLoftyContractId = (liquidityPool, key) => (
+  Number(
+    liquidityPool?.apps?.contracts?.[key]
+    ?? liquidityPool?.contracts?.[key]
+    ?? liquidityPool?.[`${key}AppId`]
+    ?? liquidityPool?.appId
+    ?? 0
+  ) || null
+);
+
 async function fetchLoftyAssistProperties() {
   try {
     const res = await fetch(LOFTY_API);
@@ -112,9 +122,9 @@ async function fetchLoftyAssistProperties() {
         tokenValue: p.tokenValue || null,
         listingStatus: p.listingStatus || null,
         // LP interface app ID for DODO PMM on-chain pricing
-        lpInterfaceAppId: lp?.appId || null,
-        // Admin/app ID for oracle + k params
-        adminAppId: lp?.appId || null, // Lofty LP apps are self-referencing for admin
+        lpInterfaceAppId: getLoftyContractId(lp, 'lpInterface'),
+        // Admin app ID stores oracle + k params
+        adminAppId: getLoftyContractId(lp, 'admin')
       };
       if (p.assetId) map[p.assetId] = entry;
       if (p.newAssetId) map[p.newAssetId] = entry;
