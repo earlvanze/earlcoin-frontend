@@ -8,7 +8,7 @@ import React from 'react';
           <Sidebar />
           <div className="flex-1 flex flex-col">
             <Header />
-            <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+            <main className="flex-1 p-4 pb-24 sm:p-6 sm:pb-24 md:pb-6 lg:p-8 overflow-y-auto">
               {children}
             </main>
           </div>
