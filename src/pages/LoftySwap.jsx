@@ -569,13 +569,13 @@ const LoftySwap = () => {
 
       {isConnected && !loading && selectedIds.size > 0 && (
         <motion.div variants={itemVariants}>
-          <Card className="border-primary/30 bg-primary/5">
+          <Card className="max-w-full overflow-hidden border-primary/30 bg-primary/5">
             <CardContent className="py-6">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                <div><p className="text-xs text-muted-foreground">Selected</p><p className="text-2xl font-bold">{selectedHoldings.length}</p></div>
-                <div><p className="text-xs text-muted-foreground">Est. Value</p><p className="text-2xl font-bold">{formatCurrency(totalUsdValue)}</p></div>
-                <div><p className="text-xs text-muted-foreground">EARL Price</p><p className="text-2xl font-bold">{formatCurrency(EARL_PRICE)}</p></div>
-                <div><p className="text-xs text-muted-foreground">Est. EARL</p><p className="text-2xl font-bold text-primary">{totalEarl.toFixed(4)}</p></div>
+              <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4 mb-6">
+                <div className="min-w-0"><p className="text-xs text-muted-foreground">Selected</p><p className="break-words text-xl font-bold sm:text-2xl">{selectedHoldings.length}</p></div>
+                <div className="min-w-0"><p className="text-xs text-muted-foreground">Est. Value</p><p className="break-words text-xl font-bold sm:text-2xl">{formatCurrency(totalUsdValue)}</p></div>
+                <div className="min-w-0"><p className="text-xs text-muted-foreground">EARL Price</p><p className="break-words text-xl font-bold sm:text-2xl">{formatCurrency(EARL_PRICE)}</p></div>
+                <div className="min-w-0"><p className="text-xs text-muted-foreground">Est. EARL</p><p className="break-words text-xl font-bold text-primary sm:text-2xl">{totalEarl.toFixed(4)}</p></div>
               </div>
               <div className="rounded-lg border border-border/60 bg-secondary/20 p-3 text-xs text-muted-foreground mb-4">
                 {isContractMode ? (
@@ -590,7 +590,7 @@ const LoftySwap = () => {
                   </>
                 )}
               </div>
-              <Button onClick={handleSwap} className="w-full bg-green-600 hover:bg-green-700 text-white" size="lg" disabled={!canSwap || !isContractMode}>
+              <Button onClick={handleSwap} className="h-auto min-h-11 w-full whitespace-normal bg-green-600 px-3 text-center hover:bg-green-700 text-white" size="lg" disabled={!canSwap || !isContractMode}>
                 {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRightLeft className="mr-2 h-4 w-4" />}
                 {!isContractMode ? 'Contract Not Deployed' : `Swap ${selectedHoldings.length} Token${selectedHoldings.length !== 1 ? 's' : ''} → EARL`}
               </Button>

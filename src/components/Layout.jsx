@@ -4,11 +4,11 @@ import React from 'react';
 
     const Layout = ({ children }) => {
       return (
-        <div className="min-h-screen flex bg-background text-foreground">
+        <div className="min-h-screen flex overflow-x-hidden bg-background text-foreground">
           <Sidebar />
-          <div className="flex-1 flex flex-col">
+          <div className="min-w-0 flex-1 flex flex-col">
             <Header />
-            <main className="flex-1 p-4 pb-24 sm:p-6 sm:pb-24 md:pb-6 lg:p-8 overflow-y-auto">
+            <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 pb-24 sm:p-6 sm:pb-24 md:pb-6 lg:p-8">
               {children}
             </main>
           </div>
