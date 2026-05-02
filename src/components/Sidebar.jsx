@@ -96,7 +96,7 @@ import React, { useState } from 'react';
           
           <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card/80 backdrop-blur-lg border-t border-border/20 z-50 pb-[env(safe-area-inset-bottom)]">
             <div
-              className="flex overflow-x-auto overscroll-x-contain px-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              className="flex overflow-x-auto overscroll-x-contain scroll-smooth [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               aria-label="Mobile primary navigation"
             >
               {navItems.map((item) => (
@@ -104,7 +104,7 @@ import React, { useState } from 'react';
                   key={item.to}
                   to={item.to}
                   className={({ isActive }) =>
-                    `flex min-w-[4.5rem] shrink-0 flex-col items-center px-2 py-2 transition-colors ${
+                    `flex basis-1/5 shrink-0 snap-start flex-col items-center justify-center px-1 py-2 transition-colors ${
                       isActive
                         ? 'text-primary'
                         : 'text-muted-foreground hover:text-foreground'
