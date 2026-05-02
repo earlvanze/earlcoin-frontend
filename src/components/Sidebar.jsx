@@ -12,6 +12,7 @@ import React, { useState } from 'react';
       { to: '/trade', icon: Repeat, label: 'Trade' },
       { to: '/delegate', icon: Handshake, label: 'Delegate' },
       { to: '/lofty-deals', icon: Bot, label: 'Lofty Deals' },
+      { to: '/lofty-swap', icon: Repeat, label: 'Lofty Swap' },
       { to: '/verification', icon: ShieldCheck, label: 'Verification' },
     ];
 
