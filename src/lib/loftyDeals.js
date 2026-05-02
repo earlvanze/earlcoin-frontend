@@ -1,8 +1,5 @@
-export const MARKETPLACE_API = 'https://api.lofty.ai/prod/properties/v2/marketplace';
-export const LP_MARKETPLACE_API = 'https://lp.lofty.ai/prod/liquidity/v1/marketplace';
-
-// Chrome User-Agent required to avoid 403 from LP API
-const LP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+export const MARKETPLACE_API = '/api/lofty.php?source=marketplace';
+export const LP_MARKETPLACE_API = '/api/lofty.php?source=lp';
 
 export const normalizeAddressLookupKey = (value) => {
   if (!value) return '';
@@ -42,9 +39,13 @@ export const isMarketplaceTradable = (deal = {}, marketplaceIds = new Set()) => 
   return candidateIds.some((id) => marketplaceIds.has(id));
 };
 
-export const shouldIncludeTradableDeal = (deal = {}, marketplaceIds = new Set()) => (
-  deal.listingStatus === 'Active' && isMarketplaceTradable(deal, marketplaceIds)
-);
+export const shouldIncludeTradableDeal = (deal = {}, marketplaceIds = new Set()) => {
+  if (deal.listingStatus !== 'Active') return false;
+  // If Lofty marketplace allowlist is unavailable, do not blank the page.
+  // Fall back to active LoftyAssist/Supabase rows and let LP pricing enrich what it can.
+  if (!marketplaceIds || marketplaceIds.size === 0) return true;
+  return isMarketplaceTradable(deal, marketplaceIds);
+};
 
 export const normalizeCashflowDeal = (item) => {
   const p = item?.property || {};
@@ -117,9 +118,7 @@ export const filterTradableDeals = (items = [], marketplaceIds = new Set()) => (
 // Returns a map of assetId (Number) -> price (Number in USD)
 export async function fetchLpPrices() {
   try {
-    const res = await fetch(LP_MARKETPLACE_API, {
-      headers: { 'User-Agent': LP_UA },
-    });
+    const res = await fetch(LP_MARKETPLACE_API);
     if (!res.ok) {
       console.error(`LP API ${res.status}`);
       return {};
