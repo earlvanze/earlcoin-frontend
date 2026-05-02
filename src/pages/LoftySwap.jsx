@@ -198,7 +198,7 @@ const HoldingRow = ({ holding, selected, onToggle, disabled, reason, lpPrice, pr
   return (
     <div
       className={cn(
-        'flex items-center gap-3 p-3 rounded-lg border transition-colors',
+        'flex flex-wrap items-center gap-3 p-3 rounded-lg border transition-colors sm:flex-nowrap',
         disabled
           ? 'border-muted/30 bg-muted/5 cursor-not-allowed opacity-60'
           : 'border-border/50 hover:border-border cursor-pointer',
@@ -225,14 +225,14 @@ const HoldingRow = ({ holding, selected, onToggle, disabled, reason, lpPrice, pr
       {disabled && reason && (
         <span className="text-xs text-destructive/80 font-medium shrink-0">{reason}</span>
       )}
-      <div className="text-right shrink-0">
-        <p className="text-sm font-medium">{tokenCount.toLocaleString()} tok</p>
-        <p className="text-xs text-muted-foreground">
+      <div className="order-last w-[calc(50%-0.375rem)] min-w-0 text-left sm:order-none sm:w-auto sm:shrink-0 sm:text-right">
+        <p className="truncate text-sm font-medium">{tokenCount.toLocaleString()} tok</p>
+        <p className="truncate text-xs text-muted-foreground">
           {isZeroPrice ? 'No price' : `${formatCurrency(price)}/tok · ${formatCurrency(totalValue)}`}
         </p>
       </div>
-      <div className="text-right shrink-0 w-24">
-        <p className="text-sm font-bold text-primary">{earlEquivalent > 0 ? earlEquivalent.toFixed(4) : '\u2014'}</p>
+      <div className="order-last w-[calc(50%-0.375rem)] min-w-0 text-right sm:order-none sm:w-24 sm:shrink-0">
+        <p className="truncate text-sm font-bold text-primary">{earlEquivalent > 0 ? earlEquivalent.toFixed(4) : '\u2014'}</p>
         <p className="text-xs text-muted-foreground">EARL</p>
       </div>
     </div>
