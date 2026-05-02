@@ -150,8 +150,14 @@ async function buildAtomicSwapGroup({
   peraWallet,
 }) {
   const params = await algodClient.getTransactionParams().do();
+  const appCallParams = { ...params, fee: 2000, flatFee: true };
+  const tokenPaymentParams = { ...params, fee: 1000, flatFee: true };
 
   // Transaction 1: App call — exchange(sender, loftyAsa, adminApp, lpInterface)
+  // Mainnet app stores accepted Lofty ASAs in boxes keyed by uint64 ASA ID.
+  // The box reference is required or Mainnet simulation/evaluation fails when the
+  // contract checks App.box_length/App.box_extract. App call fee also covers the
+  // zero-fee inner EARL transfer emitted by the contract.
   const appCall = algosdk.makeApplicationCallTxnFromObject({
     from: sender,
     appIndex: appId,
@@ -160,7 +166,8 @@ async function buildAtomicSwapGroup({
     ],
     foreignApps: [adminAppId, lpInterfaceAppId],
     foreignAssets: [loftyAsaId, EARL_ASA_ID],
-    suggestedParams: params,
+    boxes: [{ appIndex: 0, name: algosdk.encodeUint64(loftyAsaId) }],
+    suggestedParams: appCallParams,
   });
 
   // Transaction 2: Asset transfer — send Lofty tokens to the app
@@ -169,7 +176,7 @@ async function buildAtomicSwapGroup({
     to: algosdk.getApplicationAddress(appId),
     amount: loftyAmount,
     assetIndex: loftyAsaId,
-    suggestedParams: params,
+    suggestedParams: tokenPaymentParams,
     note: new TextEncoder().encode(`lofty_swap:${loftyAsaId}`),
   });
 

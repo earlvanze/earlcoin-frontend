@@ -4,10 +4,13 @@ import { PeraWalletConnect } from '@perawallet/connect';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/lib/customSupabaseClient';
 import { getVnftAssetId } from '@/lib/algorand';
+import { NETWORK } from '@/lib/config';
 
 const AppContext = createContext();
 
-const peraWallet = new PeraWalletConnect();
+const peraWallet = new PeraWalletConnect({
+    chainId: NETWORK === 'testnet' ? 416002 : NETWORK === 'betanet' ? 416003 : 416001,
+});
 
 export const AppProvider = ({ children }) => {
     const { toast } = useToast();
