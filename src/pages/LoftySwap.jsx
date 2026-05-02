@@ -545,7 +545,7 @@ const LoftySwap = () => {
                 </div>
               )}
             </CardHeader>
-            <CardContent className="space-y-2 max-h-[28rem] overflow-y-auto">
+            <CardContent className="space-y-2">
               {holdingsWithStatus.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">No swappable Lofty property tokens found in this wallet.</p>
               ) : filteredHoldings.length === 0 ? (
