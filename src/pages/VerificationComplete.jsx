@@ -8,7 +8,7 @@ import { useAppContext } from '@/contexts/AppContext';
 import { supabase } from '@/lib/customSupabaseClient';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { CheckCircle, Loader2, AlertTriangle, Gift } from 'lucide-react';
+import { Loader2, AlertTriangle, Gift } from 'lucide-react';
 import PageTitle from '@/components/PageTitle';
 import algosdk from 'algosdk';
 import { NETWORK, VNFT_ADMIN_ADDRESS } from '@/lib/config';
@@ -25,8 +25,10 @@ const VerificationComplete = () => {
     const [claiming, setClaiming] = useState(false);
     const [nftAssetId, setNftAssetId] = useState(null);
     const [optedIn, setOptedIn] = useState(false);
+    const [automationError, setAutomationError] = useState(null);
     const navigate = useNavigate();
     const intervalRef = useRef(null);
+    const automationRef = useRef({ running: false, attemptedConnect: false, completed: false });
 
     useEffect(() => {
         if (authLoading) {
@@ -69,6 +71,9 @@ const VerificationComplete = () => {
                         setStatus('verified');
                         cleanup();
                         refreshVerificationState();
+                    } else if (!error && ['canceled', 'failed', 'requires_input'].includes(syncData?.status)) {
+                        setStatus('kyc_failed');
+                        cleanup();
                     }
                 } catch (e) {
                     // ignore
@@ -231,15 +236,15 @@ const VerificationComplete = () => {
         }
     };
 
-    const handleMintVnft = async () => {
+    const handleMintVnft = async ({ silent = false } = {}) => {
         if (!accountAddress) {
-            toast({ variant: 'destructive', title: 'Wallet Not Connected', description: 'Please connect your Algorand wallet to mint the VNFT.' });
-            handleConnect();
-            return;
+            if (!silent) toast({ variant: 'destructive', title: 'Wallet Not Connected', description: 'Please connect your Algorand wallet to mint the VNFT.' });
+            await handleConnect();
+            return null;
         }
         if (!VNFT_ADMIN_ADDRESS) {
-            toast({ variant: 'destructive', title: 'VNFT Admin Missing', description: 'Set VITE_VNFT_ADMIN_ADDRESS to enable minting.' });
-            return;
+            if (!silent) toast({ variant: 'destructive', title: 'VNFT Admin Missing', description: 'Set VITE_VNFT_ADMIN_ADDRESS to enable minting.' });
+            return null;
         }
         setMinting(true);
         try {
@@ -259,8 +264,8 @@ const VerificationComplete = () => {
                     setHasVerificationNft(true);
                 refreshVerificationState();
                 }
-                toast({ title: 'VNFT Assigned', description: `Asset ID: ${assetId}. If you don't see it, opt-in and claim.` });
-                return;
+                if (!silent) toast({ title: 'VNFT Assigned', description: `Asset ID: ${assetId}. If you don't see it, opt-in and claim.` });
+                return assetId;
             }
 
             const existingAssetId = await getVnftAssetId(accountAddress);
@@ -273,8 +278,8 @@ const VerificationComplete = () => {
                 setStatus('minted');
                 setHasVerificationNft(true);
                 refreshVerificationState();
-                toast({ title: 'Verification NFT Found', description: 'You are already verified on-chain.' });
-                return;
+                if (!silent) toast({ title: 'Verification NFT Found', description: 'You are already verified on-chain.' });
+                return existingAssetId;
             }
 
             const { data, error } = await supabase.functions.invoke('mint-vnft', {
@@ -286,8 +291,8 @@ const VerificationComplete = () => {
             }
 
             if (data?.status === 'pending' && !data?.assetId) {
-                toast({ title: 'Mint Submitted', description: 'Your VNFT mint was submitted and may take a minute to confirm. If you see it in your wallet, click “I already have a VNFT — check wallet”.' });
-                return;
+                if (!silent) toast({ title: 'Mint Submitted', description: 'Your VNFT mint was submitted and may take a minute to confirm. If you see it in your wallet, click “I already have a VNFT — check wallet”.' });
+                return null;
             }
 
             if ((data?.status === 'already_minted' || data?.status === 'already_assigned') && data?.assetId) {
@@ -295,8 +300,8 @@ const VerificationComplete = () => {
                 if (user?.id) {
                     localStorage.setItem(`vnft_asset_id_${user.id}`, String(data.assetId));
                 }
-                toast({ title: 'VNFT Already Minted', description: `Asset ID: ${data.assetId}. Please opt-in to receive it.` });
-                return;
+                if (!silent) toast({ title: 'VNFT Already Minted', description: `Asset ID: ${data.assetId}. Please opt-in to receive it.` });
+                return Number(data.assetId);
             }
 
             const assetId = data?.assetId;
@@ -304,24 +309,27 @@ const VerificationComplete = () => {
             if (assetId && user?.id) {
                 localStorage.setItem(`vnft_asset_id_${user.id}`, String(assetId));
             }
-            toast({ title: 'VNFT Created', description: `Asset ID: ${assetId}. Please opt-in to receive it.` });
+            if (!silent) toast({ title: 'VNFT Created', description: `Asset ID: ${assetId}. Please opt-in to receive it.` });
+            return assetId ? Number(assetId) : null;
         } catch (err) {
             console.error(err);
-            toast({ variant: 'destructive', title: 'VNFT Mint Failed', description: err.message || 'Please try again.' });
+            if (!silent) toast({ variant: 'destructive', title: 'VNFT Mint Failed', description: err.message || 'Please try again.' });
+            throw err;
         } finally {
             setMinting(false);
         }
     };
 
-    const handleOptInVnft = async () => {
+    const handleOptInVnft = async (assetIdOverride = null, { silent = false } = {}) => {
+        const assetId = assetIdOverride || nftAssetId;
         if (!accountAddress) {
-            toast({ variant: 'destructive', title: 'Wallet Not Connected', description: 'Please connect your Algorand wallet to opt in.' });
-            handleConnect();
-            return;
+            if (!silent) toast({ variant: 'destructive', title: 'Wallet Not Connected', description: 'Please connect your Algorand wallet to opt in.' });
+            await handleConnect();
+            return false;
         }
-        if (!nftAssetId) {
-            toast({ variant: 'destructive', title: 'Missing Asset', description: 'Mint your VNFT first.' });
-            return;
+        if (!assetId) {
+            if (!silent) toast({ variant: 'destructive', title: 'Missing Asset', description: 'Mint your VNFT first.' });
+            return false;
         }
         setOptingIn(true);
         try {
@@ -330,7 +338,7 @@ const VerificationComplete = () => {
                 sender: accountAddress,
                 receiver: accountAddress,
                 amount: 0,
-                assetIndex: Number(nftAssetId),
+                assetIndex: Number(assetId),
                 suggestedParams,
             });
             const signed = await signTransactions([[{ txn: optInTxn, signers: [accountAddress] }]]);
@@ -342,28 +350,31 @@ const VerificationComplete = () => {
             }
             await algosdk.waitForConfirmation(algodClient, txId, 4);
             setOptedIn(true);
-            toast({ title: 'Opt-in Complete', description: 'You can now claim your VNFT.' });
+            if (!silent) toast({ title: 'Opt-in Complete', description: 'You can now claim your VNFT.' });
+            return true;
         } catch (err) {
             console.error(err);
-            toast({ variant: 'destructive', title: 'Opt-in Failed', description: err.message || 'Please try again.' });
+            if (!silent) toast({ variant: 'destructive', title: 'Opt-in Failed', description: err.message || 'Please try again.' });
+            throw err;
         } finally {
             setOptingIn(false);
         }
     };
 
-    const handleClaimVnft = async () => {
-        if (!accountAddress || !nftAssetId) {
-            toast({ variant: 'destructive', title: 'Missing Data', description: 'Connect wallet and mint VNFT first.' });
-            return;
+    const handleClaimVnft = async (assetIdOverride = null, { silent = false } = {}) => {
+        const assetId = assetIdOverride || nftAssetId;
+        if (!accountAddress || !assetId) {
+            if (!silent) toast({ variant: 'destructive', title: 'Missing Data', description: 'Connect wallet and mint VNFT first.' });
+            return false;
         }
-        if (!optedIn) {
-            toast({ variant: 'destructive', title: 'Not Opted In', description: 'Please opt in to the VNFT asset before claiming.' });
-            return;
+        if (!optedIn && !assetIdOverride) {
+            if (!silent) toast({ variant: 'destructive', title: 'Not Opted In', description: 'Please opt in to the VNFT asset before claiming.' });
+            return false;
         }
         setClaiming(true);
         try {
             const { data, error } = await supabase.functions.invoke('transfer-vnft', {
-                body: JSON.stringify({ wallet_address: accountAddress, asset_id: nftAssetId })
+                body: JSON.stringify({ wallet_address: accountAddress, asset_id: assetId })
             });
             if (error || data?.error) {
                 const errMsg = error?.message || data?.error?.message || data?.error || 'Transfer failed';
@@ -375,14 +386,70 @@ const VerificationComplete = () => {
                 localStorage.removeItem(`vnft_asset_id_${user.id}`);
             }
             await refreshVerificationState();
-            toast({ title: 'VNFT Transferred', description: 'Verification complete.' });
+            if (!silent) toast({ title: 'VNFT Transferred', description: 'Verification complete.' });
+            return true;
         } catch (err) {
             console.error(err);
-            toast({ variant: 'destructive', title: 'Transfer Failed', description: err.message || 'Please try again.' });
+            if (!silent) toast({ variant: 'destructive', title: 'Transfer Failed', description: err.message || 'Please try again.' });
+            throw err;
         } finally {
             setClaiming(false);
         }
     };
+
+
+    useEffect(() => {
+        if (status !== 'verified' || automationError || automationRef.current.running || automationRef.current.completed) return;
+
+        let cancelled = false;
+        const finalizeAutomatically = async () => {
+            automationRef.current.running = true;
+            setAutomationError(null);
+            try {
+                if (!accountAddress) {
+                    if (!automationRef.current.attemptedConnect) {
+                        automationRef.current.attemptedConnect = true;
+                        await handleConnect();
+                    }
+                    return;
+                }
+
+                const existingAssetId = await getVnftAssetId(accountAddress);
+                if (cancelled) return;
+                if (existingAssetId) {
+                    setNftAssetId(existingAssetId);
+                    setOptedIn(true);
+                    if (user?.id) localStorage.setItem(`vnft_asset_id_${user.id}`, String(existingAssetId));
+                    setStatus('minted');
+                    setHasVerificationNft(true);
+                    automationRef.current.completed = true;
+                    await refreshVerificationState();
+                    return;
+                }
+
+                const assetId = await handleMintVnft({ silent: true });
+                if (cancelled || !assetId) return;
+                await handleOptInVnft(assetId, { silent: true });
+                if (cancelled) return;
+                await handleClaimVnft(assetId, { silent: true });
+                if (cancelled) return;
+                automationRef.current.completed = true;
+                toast({ title: 'Verification Complete', description: 'Your on-chain verification NFT is ready.' });
+            } catch (err) {
+                console.error(err);
+                if (!cancelled) {
+                    setAutomationError(err?.message || 'Automatic VNFT finalization failed.');
+                }
+            } finally {
+                automationRef.current.running = false;
+            }
+        };
+
+        finalizeAutomatically();
+        return () => {
+            cancelled = true;
+        };
+    }, [accountAddress, automationError, handleConnect, handleMintVnft, handleOptInVnft, handleClaimVnft, refreshVerificationState, setHasVerificationNft, status, toast, user]);
 
     const renderContent = () => {
         switch (status) {
@@ -397,33 +464,43 @@ const VerificationComplete = () => {
             case 'verified':
                 return (
                     <>
-                        <CheckCircle className="h-16 w-16 text-green-500" />
-                        <CardTitle className="mt-6">You are Verified!</CardTitle>
-                        <CardDescription>Your identity has been confirmed. Mint your on-chain VNFT to complete the process.</CardDescription>
+                        <Loader2 className="h-16 w-16 text-green-500 animate-spin" />
+                        <CardTitle className="mt-6">Finalizing Verification</CardTitle>
+                        <CardDescription>
+                            Your identity is confirmed. We’ll automatically mint, opt in, and check your verification NFT now.
+                            {accountAddress ? ' Please approve the wallet prompts when they appear.' : ' Connect your Algorand wallet to continue.'}
+                        </CardDescription>
                         {nftAssetId && (
                             <p className="text-xs text-muted-foreground mt-2">Asset ID: {nftAssetId}</p>
                         )}
+                        {automationError && (
+                            <div className="mt-6 space-y-3">
+                                <p className="text-sm text-destructive">{automationError}</p>
+                                <Button onClick={() => {
+                                    automationRef.current = { running: false, attemptedConnect: !!accountAddress, completed: false };
+                                    setAutomationError(null);
+                                    setStatus('verified');
+                                }}>
+                                    Retry automatic finalization
+                                </Button>
+                            </div>
+                        )}
+                    </>
+                );
+            case 'kyc_failed':
+                return (
+                    <>
+                        <AlertTriangle className="h-16 w-16 text-yellow-500" />
+                        <CardTitle className="mt-6">KYC Could Not Be Confirmed</CardTitle>
+                        <CardDescription>
+                            We couldn’t confirm your identity verification. If you already hold a verification NFT, you can check your wallet manually.
+                        </CardDescription>
                         <div className="flex flex-col gap-3 mt-6">
-                            <Button onClick={handleMintVnft} disabled={minting} className="bg-gradient-to-r from-green-500 to-teal-500">
-                                {minting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Gift className="mr-2 h-4 w-4" />}
-                                Mint Verification NFT
-                            </Button>
-                            {nftAssetId && (
-                                <>
-                                    <Button onClick={handleOptInVnft} variant="secondary" disabled={optingIn || optedIn}>
-                                        {optingIn ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                        {optedIn ? 'Opted In' : 'Opt-in to VNFT'}
-                                    </Button>
-                                    <Button onClick={handleClaimVnft} variant="secondary" disabled={claiming || !optedIn}>
-                                        {claiming ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                        Claim VNFT
-                                    </Button>
-                                </>
-                            )}
                             <Button onClick={handleCheckWallet} disabled={checkingWallet} variant="outline">
                                 {checkingWallet ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                                 I already have a VNFT — check wallet
                             </Button>
+                            <Button onClick={() => navigate('/verification')} variant="secondary">Try KYC Again</Button>
                         </div>
                     </>
                 );
