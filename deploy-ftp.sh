@@ -13,6 +13,24 @@ fi
 
 cd "$ROOT_DIR/dist"
 
+echo "Cleaning stale remote assets..."
+current_assets=$(find assets -maxdepth 1 -type f -printf '%f\n' 2>/dev/null | sort)
+remote_assets=$(curl "ftp://${FTP_HOST}/assets/" \
+  --user "${FTP_USER}:${FTP_PASS}" \
+  --ssl-reqd --insecure --silent --show-error 2>/dev/null \
+  | awk '/^-/{print $NF}' | sort || true)
+
+while IFS= read -r asset; do
+  [ -n "$asset" ] || continue
+  if ! printf '%s\n' "$current_assets" | grep -Fxq "$asset"; then
+    echo "Deleting stale assets/$asset..."
+    curl "ftp://${FTP_HOST}/" \
+      --user "${FTP_USER}:${FTP_PASS}" \
+      --ssl-reqd --insecure --silent --show-error \
+      -Q "DELE assets/$asset" >/dev/null || true
+  fi
+done <<< "$remote_assets"
+
 while IFS= read -r -d '' file; do
   clean_file="${file#./}"
   echo "Uploading $clean_file..."
