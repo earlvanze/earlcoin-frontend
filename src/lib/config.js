@@ -15,6 +15,7 @@ export const NETWORK = firstNonEmpty(import.meta.env.VITE_NETWORK) || 'mainnet';
 
 export const EARL_ASA_ID = Number(firstNonEmpty(import.meta.env.VITE_EARL_ASA_ID) || '3497993904');
 export const VNFT_ADMIN_ADDRESS = import.meta.env.VITE_VNFT_ADMIN_ADDRESS || 'DTXJYIPBBFDMREX27RS4ZY6YN7E455ASXKCYAENM77SJIEVPWB2UZZAPMA';
+export const VNFT_ASA_ID = Number(firstNonEmpty(import.meta.env.VITE_VNFT_ASA_ID) || '752159356');
 export const USDC_ASA_ID = Number(firstNonEmpty(import.meta.env.VITE_USDC_ASA_ID) || '31566704');
 export const GOBTC_ASA_ID = Number(firstNonEmpty(import.meta.env.VITE_GOBTC_ASA_ID) || '386192725');
 export const GOBTC_DECIMALS = 8;

@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 import { fetchLpPrices } from '@/lib/loftyDeals';
 import { algodClient } from '@/lib/algorand';
 import { WALLETS, INDEXER_BASE, LOFTY_API } from '@/lib/wallets';
-import { EARL_ASA_ID, INKIND_EXCHANGE_APP_ID } from '@/lib/config';
+import { EARL_ASA_ID, INKIND_EXCHANGE_APP_ID, VNFT_ASA_ID } from '@/lib/config';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -165,7 +165,7 @@ async function buildAtomicSwapGroup({
       new TextEncoder().encode('exchange'),
     ],
     foreignApps: [adminAppId, lpInterfaceAppId],
-    foreignAssets: [loftyAsaId, EARL_ASA_ID],
+    foreignAssets: [loftyAsaId, EARL_ASA_ID, VNFT_ASA_ID],
     boxes: [{ appIndex: 0, name: algosdk.encodeUint64(loftyAsaId) }],
     suggestedParams: appCallParams,
   });
