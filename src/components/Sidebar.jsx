@@ -2,7 +2,7 @@ import React, { useState } from 'react';
     import { NavLink, useNavigate } from 'react-router-dom';
     import { motion, AnimatePresence } from 'framer-motion';
     import { Button } from '@/components/ui/button';
-    import { LayoutDashboard, FileText, Briefcase, Repeat, LogIn, LogOut, ChevronsRight, HeartHandshake as Handshake, ShieldCheck, Bot, ArrowRightLeft } from 'lucide-react';
+    import { LayoutDashboard, FileText, Briefcase, Repeat, LogIn, LogOut, ChevronsRight, HeartHandshake as Handshake, ShieldCheck, Bot, MoreHorizontal } from 'lucide-react';
     import { useAuth } from '@/contexts/SupabaseAuthContext';
 
     const navItems = [
@@ -12,14 +12,16 @@ import React, { useState } from 'react';
       { to: '/trade', icon: Repeat, label: 'Trade' },
       { to: '/delegate', icon: Handshake, label: 'Delegate' },
       { to: '/lofty-deals', icon: Bot, label: 'Lofty Deals' },
-      { to: '/lofty-swap', icon: ArrowRightLeft, label: 'Lofty Swap' },
       { to: '/verification', icon: ShieldCheck, label: 'Verification' },
     ];
 
     const Sidebar = () => {
       const { session, signOut } = useAuth();
       const [isExpanded, setIsExpanded] = useState(true);
+      const [isMoreOpen, setIsMoreOpen] = useState(false);
       const navigate = useNavigate();
+      const primaryMobileItems = navItems.slice(0, 4);
+      const overflowMobileItems = navItems.slice(4);
 
       const handleLogin = () => navigate('/login');
 
@@ -95,24 +97,72 @@ import React, { useState } from 'react';
             </div>
           </aside>
           
-          <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card/60 backdrop-blur-lg border-t border-border/20 z-50">
-            <div className="flex justify-around">
-              {navItems.map((item) => (
+          <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card/80 backdrop-blur-lg border-t border-border/20 z-50 pb-[env(safe-area-inset-bottom)]">
+            <div className="grid grid-cols-5">
+              {primaryMobileItems.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
+                  onClick={() => setIsMoreOpen(false)}
                   className={({ isActive }) =>
-                    `flex flex-col items-center p-3 transition-colors w-full ${
+                    `flex min-w-0 flex-col items-center px-1 py-2 transition-colors ${
                       isActive
                         ? 'text-primary'
                         : 'text-muted-foreground hover:text-foreground'
                     }`
                   }
                 >
-                  <item.icon className="h-6 w-6 mb-1" />
-                  <span className="text-xs">{item.label}</span>
+                  <item.icon className="h-6 w-6 mb-1 shrink-0" />
+                  <span className="max-w-full truncate text-[10px] leading-tight">{item.label}</span>
                 </NavLink>
               ))}
+
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsMoreOpen((open) => !open)}
+                  className={`flex h-full w-full min-w-0 flex-col items-center px-1 py-2 transition-colors ${
+                    isMoreOpen
+                      ? 'text-primary'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                  aria-expanded={isMoreOpen}
+                  aria-label="More navigation items"
+                >
+                  <MoreHorizontal className="h-6 w-6 mb-1 shrink-0" />
+                  <span className="max-w-full truncate text-[10px] leading-tight">More</span>
+                </button>
+
+                <AnimatePresence>
+                  {isMoreOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 12 }}
+                      transition={{ duration: 0.18 }}
+                      className="absolute bottom-full right-2 mb-2 w-48 overflow-hidden rounded-xl border border-border/30 bg-card/95 p-2 shadow-2xl backdrop-blur-lg"
+                    >
+                      {overflowMobileItems.map((item) => (
+                        <NavLink
+                          key={item.to}
+                          to={item.to}
+                          onClick={() => setIsMoreOpen(false)}
+                          className={({ isActive }) =>
+                            `flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+                              isActive
+                                ? 'bg-primary/20 text-primary'
+                                : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
+                            }`
+                          }
+                        >
+                          <item.icon className="h-5 w-5" />
+                          <span>{item.label}</span>
+                        </NavLink>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
           </nav>
         </>
