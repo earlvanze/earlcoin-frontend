@@ -2,17 +2,16 @@ import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { LayoutDashboard, FileText, Briefcase, Repeat, LogIn, LogOut, ChevronsRight, HeartHandshake as Handshake, ShieldCheck, Bot } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
+import { LayoutDashboard, FileText, Briefcase, Repeat, LogIn, LogOut, ChevronsRight, HeartHandshake as Handshake, Bot } from 'lucide-react';
+import { useAuth } from '@/contexts/SupabaseAuthContext';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/proposals', icon: FileText, label: 'Proposals' },
   { to: '/portfolio', icon: Briefcase, label: 'Portfolio' },
   { to: '/trade', icon: Repeat, label: 'Trade' },
-  { to: '/delegate', icon: Handshake, label: 'Delegate' },
   { to: '/lofty-deals', icon: Bot, label: 'Lofty Deals' },
-  { to: '/verification', icon: ShieldCheck, label: 'Verification' },
+  { to: '/delegate', icon: Handshake, label: 'Delegate' },
 ];
 
 const Sidebar = () => {

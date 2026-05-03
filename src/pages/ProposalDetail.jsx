@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useAppContext } from '@/contexts/AppContext';
 import { useToast } from '@/components/ui/use-toast';
 import { ALGOD_URL, GOV_APP_ID } from '@/lib/config';

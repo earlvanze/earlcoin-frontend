@@ -35,12 +35,20 @@ async function fetchLoftyProperties() {
 }
 
 async function fetchPortfolioAvmRows() {
-  const { data, error } = await supabase
-    .from('lofty_portfolio_avm')
-    .select('property_id, address, avm, tokens_outstanding, total_investment, market_cap, avm_corrected, avm_source, data_fetch_date');
+  try {
+    const { data, error } = await supabase
+      .from('lofty_portfolio_avm')
+      .select('property_id, address, avm, tokens_outstanding, total_investment, market_cap, avm_corrected, avm_source, data_fetch_date');
 
-  if (error) throw new Error(`Supabase AVM error: ${error.message}`);
-  return data || [];
+    if (error) {
+      console.warn('Supabase AVM unavailable, falling back to local FMV/Lofty prices:', error.message);
+      return [];
+    }
+    return data || [];
+  } catch (error) {
+    console.warn('Supabase AVM unavailable, falling back to local FMV/Lofty prices:', error.message);
+    return [];
+  }
 }
 
 function buildAvmLookup(avmRows) {
