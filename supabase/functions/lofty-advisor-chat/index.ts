@@ -83,9 +83,14 @@ function resultText(result: unknown): string {
   return JSON.stringify(result, null, 2);
 }
 
+
 function parseToolJson(result: unknown): unknown {
   const text = resultText(result);
   try { return JSON.parse(text); } catch (_) { return text; }
+}
+
+function asArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value as Record<string, unknown>[] : [];
 }
 
 function num(value: unknown): number {
@@ -105,59 +110,142 @@ function pct(value: unknown): string {
 
 function propertyLine(p: Record<string, unknown>, metric: string): string {
   const address = String(p.address || 'Unknown property');
-  const coc = pct(p.cocYieldPercent);
-  const cap = pct(p.capRatePercent);
-  const lp = money(p.liquidityPoolPriceUsd);
-  const avm = money(p.avmPriceUsd);
-  const disc = pct(p.liquidityPoolVsAvmPremiumOrDiscountPercent);
+  const coc = pct(p.cocYieldPercent ?? p.coc ?? 0);
+  const cap = pct(p.capRatePercent ?? p.capRate ?? p.cap_rate ?? 0);
+  const lp = money(p.liquidityPoolPriceUsd ?? p.marketPrice ?? p.market_price ?? 0);
+  const avm = money(p.avmPriceUsd ?? p.avm ?? 0);
+  const disc = pct(p.liquidityPoolVsAvmPremiumOrDiscountPercent ?? p.tokenDiscount ?? 0);
   return `- ${address}: ${metric}. CoC ${coc}, cap ${cap}, LP ${lp}, AVM ${avm}, LP vs AVM ${disc}`;
 }
 
-async function runInternalInvestmentAdvisor(prompt: string, sessionId: string) {
-  const response = await mcpRequest('tools/call', {
-    name: 'get_properties',
-    arguments: { status: 'active', market: null, propertyType: null },
-  }, 20, sessionId || undefined);
+function latestUserText(messages: ChatMessage[]): string {
+  const lastUser = [...messages].reverse().find((m) => String(m.role || 'user') === 'user' && String(m.content || '').trim());
+  return String(lastUser?.content || '').trim();
+}
 
-  const parsed = parseToolJson(response.result);
-  if (!Array.isArray(parsed)) {
-    return `I reached LoftyAssist MCP, but could not parse the property list yet. Raw result:\n${resultText(response.result).slice(0, 1200)}`;
+function extractSearchTerm(prompt: string): string {
+  const quoted = prompt.match(/["“”']([^"“”']{3,})["“”']/)?.[1];
+  if (quoted) return quoted.trim();
+  const afterFor = prompt.match(/(?:for|about|on|at)\s+(.+)$/i)?.[1];
+  if (afterFor) return afterFor.replace(/[?.!]+$/, '').trim();
+  return prompt.replace(/^(tell me about|analyze|search|find|lookup|look up|what about|how about)\s+/i, '').replace(/[?.!]+$/, '').trim();
+}
+
+async function callTool(name: string, args: Record<string, unknown>, sessionId: string, id: number) {
+  const response = await mcpRequest('tools/call', { name, arguments: args }, id, sessionId || undefined);
+  return response.result;
+}
+
+async function findProperty(prompt: string, sessionId: string) {
+  const term = extractSearchTerm(prompt);
+  const search = await callTool('search_properties', { term }, sessionId, 30);
+  const matches = asArray(parseToolJson(search));
+  return { term, matches };
+}
+
+function summarizeProperties(title: string, props: Record<string, unknown>[], metric: (p: Record<string, unknown>) => string) {
+  if (!props.length) return `${title}\n- No matching properties returned.`;
+  return `${title}\n${props.slice(0, 8).map((p) => propertyLine(p, metric(p))).join('\n')}`;
+}
+
+async function runInternalInvestmentAdvisor(prompt: string, messages: ChatMessage[], sessionId: string) {
+  const userText = latestUserText(messages) || prompt;
+  const q = userText.toLowerCase();
+
+  if (/platform|market index|overall market|macro|stats|statistics/.test(q)) {
+    const result = await callTool(q.includes('index') ? 'get_market_index' : 'get_platform_stats', {}, sessionId, 20);
+    return `LoftyAssist MCP ${q.includes('index') ? 'market index' : 'platform stats'} result:\n${resultText(result).slice(0, 3000)}`;
   }
 
-  const props = parsed as Record<string, unknown>[];
-  const q = prompt.toLowerCase();
-  const wantsAvoid = /avoid|risk|bad|worst|overpriced|red flag/.test(q);
-  const wantsAlpha = /alpha|discount|undervalued|nav|avm|upside/.test(q);
-  const wantsCashflow = /cash|yield|coc|income|rent/.test(q) || (!wantsAvoid && !wantsAlpha);
+  if (/owned|my portfolio|portfolio summary|holdings/.test(q)) {
+    const tool = /history|over time|chart/.test(q) ? 'get_portfolio_history' : /owned|holdings/.test(q) ? 'get_owned_properties' : 'get_portfolio_summary';
+    const args = tool === 'get_portfolio_history' ? { daysBack: 90 } : {};
+    const result = await callTool(tool, args, sessionId, 21);
+    return `LoftyAssist MCP ${tool} result:\n${resultText(result).slice(0, 3000)}`;
+  }
+
+  if (/order book|bids?|asks?|spread|liquidity for|buy orders?|sell orders?/.test(q)) {
+    const { term, matches } = await findProperty(userText, sessionId);
+    const property = matches[0];
+    if (!property?.id) return `I searched for “${term}” but did not find a property to fetch an order book for.`;
+    const result = await callTool('get_property_order_book', { propertyId: property.id }, sessionId, 22);
+    return `Order book for ${property.address || term}:\n${resultText(result).slice(0, 3000)}`;
+  }
+
+  if (/document|docs?|p&l|financials|url|download/.test(q)) {
+    const { term, matches } = await findProperty(userText, sessionId);
+    const property = matches[0];
+    if (!property?.id) return `I searched for “${term}” but did not find a property to fetch documents for.`;
+    const result = await callTool('get_property_documents', { propertyId: property.id }, sessionId, 23);
+    return `Documents for ${property.address || term}:\n${resultText(result).slice(0, 3000)}`;
+  }
+
+  if (/pm update|manager update|news|latest update|what changed|changes today|updates/.test(q)) {
+    if (/today|latest|changed/.test(q) && !/for|about|at/.test(q)) {
+      const result = await callTool('get_latest_updates', {}, sessionId, 24);
+      return `Latest LoftyAssist updates:\n${resultText(result).slice(0, 3000)}`;
+    }
+    const { term, matches } = await findProperty(userText, sessionId);
+    const property = matches[0];
+    if (!property?.id) return `I searched for “${term}” but did not find a property to fetch PM updates for.`;
+    const result = await callTool('get_property_pm_updates', { propertyId: property.id }, sessionId, 25);
+    return `PM updates for ${property.address || term}:\n${resultText(result).slice(0, 3000)}`;
+  }
+
+  if (/price history|ohlc|chart|trend|momentum|volatility/.test(q)) {
+    const { term, matches } = await findProperty(userText, sessionId);
+    const property = matches[0];
+    if (!property?.id) return `I searched for “${term}” but did not find a property to fetch market prices for.`;
+    const result = await callTool('get_property_market_prices', { propertyId: property.id }, sessionId, 26);
+    return `Market price history for ${property.address || term}:\n${resultText(result).slice(0, 3000)}`;
+  }
+
+  if (/profile|seller|property manager|manager reputation|reputation/.test(q)) {
+    const result = await callTool('get_profiles', {}, sessionId, 27);
+    return `LoftyAssist profiles/reputation result:\n${resultText(result).slice(0, 3000)}`;
+  }
+
+  if (/search|find|lookup|property|address|tell me about|analyze|compare/.test(q) && !/cashflow|yield|alpha|discount|avoid|risk|screen/.test(q)) {
+    const { term, matches } = await findProperty(userText, sessionId);
+    if (!matches.length) return `I searched LoftyAssist for “${term}” and did not find a match.`;
+    if (matches.length === 1 || /detail|full|analyze|tell me about/.test(q)) {
+      const propertyId = matches[0].id;
+      const result = await callTool('get_property', { propertyId }, sessionId, 28);
+      return `Property detail for ${matches[0].address || term}:\n${resultText(result).slice(0, 3500)}`;
+    }
+    return summarizeProperties(`Search results for “${term}”:`, matches, (p) => `match ${p.market || p.state || ''}`);
+  }
+
+  const propsResult = await callTool('get_properties', { status: 'active', market: null, propertyType: null }, sessionId, 29);
+  const props = asArray(parseToolJson(propsResult));
+  if (!props.length) return `I reached LoftyAssist MCP, but could not parse property data. Raw result:\n${resultText(propsResult).slice(0, 1200)}`;
+
+  if (/avoid|risk|bad|worst|overpriced|red flag/.test(q)) {
+    const avoidList = [...props]
+      .filter((p) => num(p.liquidityPoolVsAvmPremiumOrDiscountPercent) > 25 || num(p.cocYieldPercent) < 3 || num(p.totalLoansUsd) > num(p.totalInvestmentUsd) * 0.75)
+      .sort((a, b) => num(b.liquidityPoolVsAvmPremiumOrDiscountPercent) - num(a.liquidityPoolVsAvmPremiumOrDiscountPercent))
+      .slice(0, 8);
+    return summarizeProperties(`I screened ${props.length} active properties. Names I would scrutinize first:`, avoidList, (p) => `risk flag LP vs AVM ${pct(p.liquidityPoolVsAvmPremiumOrDiscountPercent)}`);
+  }
+
+  if (/alpha|discount|undervalued|nav|avm|upside/.test(q)) {
+    const discounted = [...props]
+      .filter((p) => num(p.liquidityPoolVsAvmPremiumOrDiscountPercent) < 0)
+      .sort((a, b) => num(a.liquidityPoolVsAvmPremiumOrDiscountPercent) - num(b.liquidityPoolVsAvmPremiumOrDiscountPercent))
+      .slice(0, 8);
+    return summarizeProperties(`I screened ${props.length} active properties. Best apparent discounts vs AVM:`, discounted, (p) => `LP vs AVM ${pct(p.liquidityPoolVsAvmPremiumOrDiscountPercent)}`);
+  }
+
+  if (/screen|filter/.test(q)) {
+    const highYield = [...props].filter((p) => num(p.cocYieldPercent) >= 10).sort((a, b) => num(b.cocYieldPercent) - num(a.cocYieldPercent)).slice(0, 8);
+    return summarizeProperties(`I ran a simple high-yield screen across ${props.length} active properties:`, highYield, (p) => `CoC ${pct(p.cocYieldPercent)}`);
+  }
 
   const topCashflow = [...props]
     .filter((p) => num(p.cocYieldPercent) > 0)
     .sort((a, b) => num(b.cocYieldPercent) - num(a.cocYieldPercent))
-    .slice(0, 5);
-  const topDiscount = [...props]
-    .filter((p) => num(p.liquidityPoolVsAvmPremiumOrDiscountPercent) < 0)
-    .sort((a, b) => num(a.liquidityPoolVsAvmPremiumOrDiscountPercent) - num(b.liquidityPoolVsAvmPremiumOrDiscountPercent))
-    .slice(0, 5);
-  const avoidList = [...props]
-    .filter((p) => num(p.liquidityPoolVsAvmPremiumOrDiscountPercent) > 25 || num(p.cocYieldPercent) < 3 || num(p.totalLoansUsd) > num(p.totalInvestmentUsd) * 0.75)
-    .sort((a, b) => num(b.liquidityPoolVsAvmPremiumOrDiscountPercent) - num(a.liquidityPoolVsAvmPremiumOrDiscountPercent))
-    .slice(0, 5);
-
-  const sections: string[] = [];
-  sections.push(`I pulled ${props.length} active properties from LoftyAssist MCP and ranked them for research support, not financial advice.`);
-
-  if (wantsCashflow) {
-    sections.push(`\nBest cashflow/yield candidates:\n${topCashflow.map((p) => propertyLine(p, `CoC ${pct(p.cocYieldPercent)}`)).join('\n')}`);
-  }
-  if (wantsAlpha) {
-    sections.push(`\nBest apparent alpha/discount candidates vs AVM:\n${topDiscount.length ? topDiscount.map((p) => propertyLine(p, `LP vs AVM ${pct(p.liquidityPoolVsAvmPremiumOrDiscountPercent)}`)).join('\n') : '- I did not find active properties trading below AVM in this pull.'}`);
-  }
-  if (wantsAvoid) {
-    sections.push(`\nNames I would scrutinize or avoid first:\n${avoidList.length ? avoidList.map((p) => propertyLine(p, `risk flag LP vs AVM ${pct(p.liquidityPoolVsAvmPremiumOrDiscountPercent)}`)).join('\n') : '- No obvious avoid-list names triggered the simple premium/low-yield/debt screens.'}`);
-  }
-
-  sections.push('\nNext step: for any specific property, ask by address and I can pull property-level details/updates/documents from MCP.');
-  return sections.join('\n');
+    .slice(0, 8);
+  return summarizeProperties(`I interpreted your question as a cashflow/yield screen across ${props.length} active properties:`, topCashflow, (p) => `CoC ${pct(p.cocYieldPercent)}`);
 }
 
 Deno.serve(async (req) => {
@@ -203,7 +291,7 @@ Deno.serve(async (req) => {
       return jsonResponse(200, { answer: resultText(response.result), tool: agent, source: 'supabase-edge' });
     }
 
-    const answer = await runInternalInvestmentAdvisor(prompt, sessionId);
+    const answer = await runInternalInvestmentAdvisor(prompt, messages, sessionId);
     return jsonResponse(200, { answer, tool: 'lofty-assist-intel', source: 'supabase-edge+mcp-tools' });
   } catch (err) {
     return jsonResponse(502, { error: err instanceof Error ? err.message : String(err) });
