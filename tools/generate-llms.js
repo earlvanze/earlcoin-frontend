@@ -151,10 +151,6 @@ function main() {
   let pages = [];
   
   if (!fs.existsSync(pagesDir)) {
-    pages.push(processPageFile(appJsxPath, []))
-    pages = pages.filter(Boolean);
-  } else {
-    const routes = extractRoutes(appJsxPath);
     const reactFiles = findReactFiles(pagesDir);
 
     pages = reactFiles
@@ -166,11 +162,6 @@ function main() {
     console.error('❌ No pages with Helmet components found!');
     process.exit(1);
   }
-
-
-  const llmsTxtContent = generateLlmsTxt(pages);
-  const outputPath = path.join(process.cwd(), 'public', 'llms.txt');
-  
   ensureDirectoryExists(path.dirname(outputPath));
   fs.writeFileSync(outputPath, llmsTxtContent, 'utf8');
 }

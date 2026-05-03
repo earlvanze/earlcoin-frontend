@@ -1,125 +1,87 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
-import { supabase } from '@/lib/customSupabaseClient';
-import { useToast } from '@/components/ui/use-toast';
-import { SITE_URL } from '@/lib/config';
+import React, { createContext, useState, useEffect, useContext } from 'react';
+    import { useToast } from '@/components/ui/use-toast';
+    import { createClient } from '@supabase/supabase-js';
 
-const AuthContext = createContext(undefined);
+    const AuthContext = createContext();
 
-export const AuthProvider = ({ children }) => {
-  const { toast } = useToast();
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-  const [user, setUser] = useState(null);
-  const [session, setSession] = useState(null);
-  const [loading, setLoading] = useState(true);
+    let supabase;
+    if (supabaseUrl && supabaseAnonKey) {
+        supabase = createClient(supabaseUrl, supabaseAnonKey);
+    }
 
-  const handleSession = useCallback(async (session) => {
-    setSession(session);
-    setUser(session?.user ?? null);
-    setLoading(false);
-  }, []);
+    export const AuthProvider = ({ children }) => {
+        const { toast } = useToast();
+        const [session, setSession] = useState(null);
+        const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      handleSession(session);
+        useEffect(() => {
+            if (!supabase) {
+                console.warn("Supabase credentials not found. Skipping Supabase initialization.");
+                setLoading(false);
+                return;
+            }
+
+            const getSession = async () => {
+                const { data: { session } } = await supabase.auth.getSession();
+                setSession(session);
+                setLoading(false);
+            };
+
+            getSession();
+
+            const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+                setSession(session);
+            });
+
+            return () => subscription.unsubscribe();
+        }, []);
+
+        const login = async () => {
+            if (!supabase) {
+                toast({
+                    variant: 'destructive',
+                    title: "Supabase Not Connected",
+                    description: "Please complete the Supabase integration setup first.",
+                });
+                return;
+            }
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider: 'discord',
+            });
+            if (error) {
+                toast({
+                    variant: 'destructive',
+                    title: 'Login Error',
+                    description: error.message,
+                });
+            }
+        };
+
+        const logout = async () => {
+            if (!supabase) return;
+            await supabase.auth.signOut();
+            setSession(null);
+        };
+
+        const value = {
+            session,
+            login,
+            logout,
+            loading,
+            user: session?.user ?? null,
+        };
+
+        return (
+            <AuthContext.Provider value={value}>
+                {!loading && children}
+            </AuthContext.Provider>
+        );
     };
 
-    getSession();
+    export const useAuth = () => {
+        return useContext(AuthContext);
+    };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        handleSession(session);
-      }
-    );
-
-    return () => subscription.unsubscribe();
-  }, [handleSession]);
-
-  const signUp = useCallback(async (email, password, options) => {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options,
-    });
-
-    if (error) {
-      toast({
-        variant: "destructive",
-        title: "Sign up Failed",
-        description: error.message || "Something went wrong",
-      });
-    }
-
-    return { error };
-  }, [toast]);
-
-  const signIn = useCallback(async (email, password) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      toast({
-        variant: "destructive",
-        title: "Sign in Failed",
-        description: error.message || "Something went wrong",
-      });
-    }
-
-    return { error };
-  }, [toast]);
-
-  const signInWithOAuth = useCallback(async (provider) => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: {
-        redirectTo: SITE_URL || window.location.origin,
-      },
-    });
-
-    if (error) {
-      toast({
-        variant: "destructive",
-        title: "OAuth Error",
-        description: error.message || "Failed to initiate social login",
-      });
-    }
-
-    return { error };
-  }, [toast]);
-
-  const signOut = useCallback(async () => {
-    const { error } = await supabase.auth.signOut();
-
-    if (error) {
-      toast({
-        variant: "destructive",
-        title: "Sign out Failed",
-        description: error.message || "Something went wrong",
-      });
-    }
-
-    return { error };
-  }, [toast]);
-
-  const value = useMemo(() => ({
-    user,
-    session,
-    loading,
-    signUp,
-    signIn,
-    signInWithOAuth,
-    signOut,
-  }), [user, session, loading, signUp, signIn, signInWithOAuth, signOut]);
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-};
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-};

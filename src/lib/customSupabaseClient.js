@@ -1,15 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config';
 
-if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-  console.warn('Supabase env vars missing: set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY');
-}
 
-const customSupabaseClient = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder';
 
-export default customSupabaseClient;
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-export {
-  customSupabaseClient,
-  customSupabaseClient as supabase,
-};

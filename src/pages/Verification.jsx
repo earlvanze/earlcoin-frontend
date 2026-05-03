@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
     import PageTitle from '@/components/PageTitle';
     import { Button } from '@/components/ui/button';
     import { Card, CardContent } from '@/components/ui/card';
-    import { useAuth } from '@/contexts/AuthContext.jsx';
+    import { useAuth } from '@/contexts/SupabaseAuthContext';
     import { useAppContext } from '@/contexts/AppContext';
     import { ShieldCheck, ShieldAlert, Loader2, LogIn, FlaskConical, Gift } from 'lucide-react';
     import { Link, useNavigate } from 'react-router-dom';
@@ -24,6 +24,7 @@ import React, { useState, useEffect } from 'react';
         const { kycVerified, hasVerificationNft } = useAppContext();
         const [loading, setLoading] = useState(false);
         const navigate = useNavigate();
+        const canBypassVerification = import.meta.env.DEV && typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
         const startVerification = async () => {
             if (!user) {
@@ -32,17 +33,19 @@ import React, { useState, useEffect } from 'react';
             }
             setLoading(true);
             try {
-                if (!stripePromise) throw new Error('Stripe publishable key missing');
+                if (!stripePromise) {
+                    throw new Error('Stripe Identity is not configured for verification yet.');
+                }
+
                 const { data, error } = await supabase.functions.invoke('stripe-identity-session', {
                     body: JSON.stringify({ user_id: user.id }),
                 });
 
-                if (error || data?.error) throw new Error(error?.message || data?.error);
+                if (error || data.error) throw new Error(error?.message || data.error);
 
-                const { client_secret } = data;
-                const sessionId = client_secret?.split('_secret_')?.[0];
-                if (sessionId) {
-                    localStorage.setItem('stripe_kyc_session_id', sessionId);
+                const { client_secret, session_id } = data;
+                if (session_id) {
+                    localStorage.setItem('stripe_kyc_session_id', session_id);
                 }
                 const stripe = await stripePromise;
                 const result = await stripe.verifyIdentity(client_secret);
@@ -54,6 +57,7 @@ import React, { useState, useEffect } from 'react';
                 }
 
             } catch (error) {
+                localStorage.removeItem('stripe_kyc_session_id');
                 toast({ variant: 'destructive', title: 'Verification Failed', description: error.message });
             } finally {
                 setLoading(false);
@@ -61,54 +65,32 @@ import React, { useState, useEffect } from 'react';
         };
 
         const handleBypassVerification = async () => {
+            if (!canBypassVerification) {
+                toast({ variant: 'destructive', title: 'Bypass disabled', description: 'Client-side KYC bypass is blocked outside local development.' });
+                return;
+            }
             if (!user) {
                 toast({ variant: 'destructive', title: 'Not Logged In', description: 'Please log in to bypass verification.' });
                 return;
             }
             setLoading(true);
             try {
-                const { data, error } = await supabase.functions.invoke('set-kyc-status', {
-                    body: JSON.stringify({ kyc_verified: true })
-                });
-                if (error || data?.error) throw new Error(error?.message || data?.error?.message || 'Failed to set KYC');
+                const { error } = await supabase
+                    .from('profiles')
+                    .update({ kyc_verified: true, updated_at: new Date().toISOString() })
+                    .eq('id', user.id);
+
+                if (error) throw error;
 
                 toast({
                     title: "Verification Bypassed!",
-                    description: "Proceeding to NFT minting for testing.",
+                    description: "Proceeding to NFT minting for local testing.",
                 });
                 navigate('/verification-complete');
             } catch (error) {
                 toast({
                     variant: "destructive",
                     title: "Bypass Failed",
-                    description: error.message,
-                });
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        const handleResetVerification = async () => {
-            if (!user) {
-                toast({ variant: 'destructive', title: 'Not Logged In', description: 'Please log in to reset verification.' });
-                return;
-            }
-            setLoading(true);
-            try {
-                const { data, error } = await supabase.functions.invoke('set-kyc-status', {
-                    body: JSON.stringify({ kyc_verified: false })
-                });
-                if (error || data?.error) throw new Error(error?.message || data?.error?.message || 'Failed to reset KYC');
-
-                toast({
-                    title: "Verification Reset",
-                    description: "KYC status cleared. You can now test Stripe verification.",
-                });
-                navigate('/verification');
-            } catch (error) {
-                toast({
-                    variant: "destructive",
-                    title: "Reset Failed",
                     description: error.message,
                 });
             } finally {
@@ -128,33 +110,15 @@ import React, { useState, useEffect } from 'react';
                     icon: <ShieldCheck className="h-12 w-12 text-green-400" />, 
                     title: "You are Fully Verified!", 
                     description: `Your identity is confirmed and your verification NFT is in your wallet.`, 
-                    button: (
-                        <div className="flex flex-col space-y-2 w-full max-w-xs">
-                            <Button onClick={() => navigate('/trade')}>Start Trading</Button>
-                            {import.meta.env.DEV && (
-                                <Button variant="outline" onClick={handleResetVerification}>
-                                    Reset KYC (Dev)
-                                </Button>
-                            )}
-                        </div>
-                    )
+                    button: <Button onClick={() => navigate('/trade')}>Start Trading</Button> 
                 };
             }
              if (kycVerified && !hasVerificationNft) {
                 return { 
                     icon: <Gift className="h-12 w-12 text-purple-400" />, 
-                    title: "Check Wallet First", 
-                    description: `You are KYC verified. We’ll check your wallet for an existing VNFT before asking you to mint one.`, 
-                    button: (
-                        <div className="flex flex-col space-y-2 w-full max-w-xs">
-                            <Button onClick={() => navigate('/verification-complete')}>Continue</Button>
-                            {import.meta.env.DEV && (
-                                <Button variant="outline" onClick={handleResetVerification}>
-                                    Reset KYC (Dev)
-                                </Button>
-                            )}
-                        </div>
-                    )
+                    title: "Mint Your NFT", 
+                    description: `You are KYC verified! The final step is to mint your verification NFT to get full trading access.`, 
+                    button: <Button onClick={() => navigate('/verification-complete')}>Mint Verification NFT</Button> 
                 };
             }
             return { 
@@ -163,11 +127,20 @@ import React, { useState, useEffect } from 'react';
                 description: "To participate in governance and trading, you must complete a one-time KYC/AML check. This ensures our DAO's compliance and security.", 
                 button: (
                     <div className="flex flex-col space-y-2 w-full max-w-xs">
-                        <Button onClick={startVerification} className="bg-gradient-to-r from-purple-600 to-indigo-600" disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Start Verification"}</Button>
-                        <Button onClick={handleBypassVerification} variant="outline" disabled={loading}>
-                            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FlaskConical className="mr-2 h-4 w-4" />}
-                            Bypass (Dev Mode)
-                        </Button>
+                        {STRIPE_PUBLISHABLE_KEY ? (
+                            <Button onClick={startVerification} className="bg-gradient-to-r from-purple-600 to-indigo-600" disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Start Verification"}</Button>
+                        ) : (
+                            <div className="text-center space-y-2">
+                                <Button disabled className="bg-gradient-to-r from-purple-600 to-indigo-600 opacity-50">Start Verification</Button>
+                                <p className="text-xs text-muted-foreground">Identity verification is being configured. Please check back soon or contact support.</p>
+                            </div>
+                        )}
+                        {canBypassVerification ? (
+                            <Button onClick={handleBypassVerification} variant="outline" disabled={loading}>
+                                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FlaskConical className="mr-2 h-4 w-4" />}
+                                Bypass (Dev Mode)
+                            </Button>
+                        ) : null}
                     </div>
                 )
             };

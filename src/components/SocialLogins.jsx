@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { Loader2, Wallet, Landmark } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useAuth } from '@/contexts/AuthContext';
-import { useToast } from "@/components/ui/use-toast";
+import { useAuth } from '@/contexts/SupabaseAuthContext';
+import { useToast } from '@/components/ui/use-toast';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 const GoogleIcon = () => (
   <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
@@ -15,24 +17,66 @@ const GoogleIcon = () => (
 
 const DiscordIcon = () => (
   <svg className="mr-2 h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
-    <path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4464.8257-.618 1.2243a18.1162 18.1162 0 00-5.4852 0c-.1716-.3986-.407-.933-.505-1.3373a19.7363 19.7363 0 00-10.3264 0c-.099.4043-.3334.9387-.505 1.3373a18.1162 18.1162 0 00-5.4852 0c-.1716-.3986-.407-.849-.618-1.2243a.0741.0741 0 00-.0785-.0371 19.7913 19.7913 0 00-4.8851 1.5152.064.064 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.0991.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.419-2.1568 2.419zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.419-2.1568 2.419z" />
+    <path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4464.8257-.618 1.2243a18.1162 18.1162 0 00-5.4852 0c-.1716-.3986-.407-.8491-.618-1.2243a.0741.0741 0 00-.0785-.0371A19.7913 19.7913 0 003.683 4.3698a.0741.0741 0 00-.0596.099c.1423.4379.2936.8758.4641 1.3137-.6664.959-.9997 1.6653-1.1613 2.2725a.0741.0741 0 00.0268.0844c1.33.8889 2.6382 1.4355 4.0103 1.7585a.0741.0741 0 00.0882-.043c.1423-.3665.2654-.733.3885-1.0995a.0741.0741 0 00-.043-.0844c-.6856-.2482-1.3617-.5682-1.9985-.9875a.0741.0741 0 01-.0172-.1089c.0371-.0563.0882-.1125.1393-.1688a13.7814 13.7814 0 012.94.9875.0741.0741 0 00.0785-.0094c.9118-.457 1.8952-.8491 2.822-.1125a.0741.0741 0 00.0785.0094c.9212.7375 1.9047 1.1295 2.822 1.125a.0741.0741 0 00.0785-.0094c.0511-.0281.1022-.0563.1487-.0938a.0741.0741 0 01-.0172.1089c-.6368.4193-1.3129.7393-1.9985.9875a.0741.0741 0 00-.043.0844c.1231.3665.2462.733.3885 1.0995a.0741.0741 0 00.0882.043c1.3721-.323 2.6803-.8696 4.0103-1.7585a.0741.0741 0 00.0268-.0844c-.1616-.6072-.4949-1.3137-1.1613-2.2725.1705-.4379.3218-.8758.4641-1.3137a.0741.0741 0 00-.0596-.099zM8.02 15.3312c-.9997 0-1.8191-.8194-1.8191-1.8191s.8194-1.8191 1.8191-1.8191 1.8191.8194 1.8191 1.8191-.8194 1.8191-1.8191 1.8191zm7.9748 0c-.9997 0-1.8191-.8194-1.8191-1.8191s.8194-1.8191 1.8191-1.8191 1.8191.8194 1.8191 1.8191-.8194 1.8191-1.8191 1.8191z" />
   </svg>
 );
 
 const SocialLogins = ({ type = 'login' }) => {
-  const { signInWithOAuth } = useAuth();
+  const { signInWithOAuth, signInWithWeb3, consumeAuthRedirect } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [pending, setPending] = useState(null);
+
+  const redirectPath = (() => {
+    const params = new URLSearchParams(location.search || '');
+    const requested = params.get('redirect');
+    if (requested && requested.startsWith('/') && !requested.startsWith('//')) return requested;
+    const current = `${location.pathname || '/'}${location.search || ''}${location.hash || ''}`;
+    if (current === '/login' || current === '/signup') return '/';
+    return current;
+  })();
 
   const handleOAuthLogin = async (provider) => {
-    const { error } = await signInWithOAuth(provider);
-    if (error) {
+    setPending(provider);
+    try {
+      const { error } = await signInWithOAuth(provider, redirectPath);
+      if (!error) {
+        toast({
+          title: 'Redirecting…',
+          description: `Continue ${type} with ${provider}.`,
+        });
+      }
+    } catch (error) {
       toast({
-        variant: "destructive",
-        title: `Failed to ${type} with ${provider}`,
-        description: error.message,
+        variant: 'destructive',
+        title: 'OAuth Login Failed',
+        description: error.message || 'Unable to start OAuth sign-in.',
       });
+    } finally {
+      setPending(null);
     }
   };
+
+  const handleWeb3Login = async (chain) => {
+    setPending(chain);
+    try {
+      const { error } = await signInWithWeb3(chain, undefined, redirectPath);
+      if (error) return;
+
+      const storedRedirect = consumeAuthRedirect();
+      const target = redirectPath || storedRedirect || '/';
+      toast({
+        title: 'Wallet connected',
+        description: `Signed in with your ${chain === 'ethereum' ? 'Ethereum' : 'Solana'} wallet.`,
+      });
+      navigate(target, { replace: true });
+    } finally {
+      setPending(null);
+    }
+  };
+
+  const isBusy = (name) => pending === name;
 
   return (
     <>
@@ -41,21 +85,31 @@ const SocialLogins = ({ type = 'login' }) => {
           <span className="w-full border-t" />
         </div>
         <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-card px-2 text-muted-foreground">
-            Or continue with
-          </span>
+          <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
         </div>
       </div>
+
       <div className="grid grid-cols-2 gap-2">
-        <Button variant="outline" onClick={() => handleOAuthLogin('google')}>
-          <GoogleIcon />
+        <Button variant="outline" type="button" onClick={() => handleOAuthLogin('google')} disabled={pending !== null}>
+          {isBusy('google') ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GoogleIcon />}
           Google
         </Button>
-        <Button variant="outline" onClick={() => handleOAuthLogin('discord')}>
-          <DiscordIcon />
+        <Button variant="outline" type="button" onClick={() => handleOAuthLogin('discord')} disabled={pending !== null}>
+          {isBusy('discord') ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <DiscordIcon />}
           Discord
         </Button>
+        <Button variant="outline" type="button" onClick={() => handleWeb3Login('ethereum')} disabled={pending !== null}>
+          {isBusy('ethereum') ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wallet className="mr-2 h-4 w-4" />}
+          Ethereum
+        </Button>
+        <Button variant="outline" type="button" onClick={() => handleWeb3Login('solana')} disabled={pending !== null}>
+          {isBusy('solana') ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Landmark className="mr-2 h-4 w-4" />}
+          Solana
+        </Button>
       </div>
+      <p className="mt-3 text-xs text-center text-muted-foreground">
+        Wallet sign-in uses Supabase web3 auth with an injected browser wallet. If a wallet button fails, install or unlock the matching wallet extension first.
+      </p>
     </>
   );
 };

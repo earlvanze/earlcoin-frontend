@@ -2,52 +2,83 @@ import React from 'react';
     import { motion } from 'framer-motion';
     import PageTitle from '@/components/PageTitle';
     import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-    import { DollarSign, Users, BarChart, Landmark } from 'lucide-react';
-    import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+    import { DollarSign, MapPin, TrendingUp, Landmark, AlertTriangle, Loader2 } from 'lucide-react';
+    import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+    import USMap from '@/components/USMap';
+    import { usePortfolioData } from '@/hooks/usePortfolioData';
 
-    const kpiData = [
-      { title: 'Treasury Value', value: '$1,250,630.78', icon: DollarSign, change: '+2.1%' },
-      { title: 'DAO Members', value: '142', icon: Users, change: '+5 this month' },
-      { title: 'Properties Owned', value: '8', icon: Landmark, change: '+1' },
-      { title: 'Avg. ROI', value: '12.4%', icon: BarChart, change: '-0.2%' },
-    ];
-
-    const chartData = [
-      { name: 'Jan', value: 800000 },
-      { name: 'Feb', value: 850000 },
-      { name: 'Mar', value: 950000 },
-      { name: 'Apr', value: 930000 },
-      { name: 'May', value: 1100000 },
-      { name: 'Jun', value: 1150000 },
-      { name: 'Jul', value: 1250630 },
+    const navData = [
+      { date: 'Sep 24', nav: 12500 },
+      { date: 'Nov 24', nav: 28400 },
+      { date: 'Jan 25', nav: 42300 },
+      { date: 'Mar 25', nav: 58900 },
+      { date: 'Jun 25', nav: 62400 },
+      { date: 'Sep 25', nav: 65100 },
+      { date: 'Dec 25', nav: 67800 },
     ];
 
     const containerVariants = {
       hidden: { opacity: 0 },
-      visible: {
-        opacity: 1,
-        transition: {
-          staggerChildren: 0.1,
-        },
-      },
+      visible: { opacity: 1, transition: { staggerChildren: 0.1 } },
     };
 
     const itemVariants = {
       hidden: { y: 20, opacity: 0 },
-      visible: {
-        y: 0,
-        opacity: 1,
-        transition: {
-          type: 'spring',
-          stiffness: 100,
-        },
-      },
+      visible: { y: 0, opacity: 1, transition: { type: 'spring', stiffness: 100 } },
+    };
+
+    const formatUSD = (val) => {
+      if (val >= 1000000) return `$${(val / 1000000).toFixed(2)}M`;
+      if (val >= 1000) return `$${(val / 1000).toFixed(1)}k`;
+      return `$${val.toFixed(0)}`;
     };
 
     const Dashboard = () => {
+      const { data, loading, error, lastUpdated } = usePortfolioData();
+
+      if (loading) {
+        return (
+          <div className="flex items-center justify-center min-h-[60vh]">
+            <div className="text-center space-y-4">
+              <Loader2 className="h-8 w-8 animate-spin text-purple-400 mx-auto" />
+              <p className="text-muted-foreground">Loading on-chain portfolio data...</p>
+            </div>
+          </div>
+        );
+      }
+
+      if (error) {
+        return (
+          <div className="flex items-center justify-center min-h-[60vh]">
+            <div className="text-center space-y-4">
+              <AlertTriangle className="h-8 w-8 text-red-400 mx-auto" />
+              <p className="text-red-400">Error loading data: {error}</p>
+            </div>
+          </div>
+        );
+      }
+
+      const { totalGross, totalMortgage, stateValues, properties, coolwood, propertyCount, stateCount, topCoc } = data;
+      const netEquity = totalGross;
+
+      // Add current NAV point
+      const currentNav = [...navData, { date: 'Now', nav: Math.round(data.loftyGross) }];
+
+      const kpiData = [
+        { title: 'Gross Property Value', value: formatUSD(totalGross), icon: DollarSign, change: `${propertyCount} properties across ${stateCount} states` },
+        { title: 'Lofty Properties', value: `${propertyCount}`, icon: MapPin, change: `Across ${stateCount} states` },
+        { title: 'Gross Value', value: formatUSD(totalGross), icon: Landmark, change: 'On-chain token value (live)' },
+        { title: 'Top Cash Yield', value: `${topCoc.coc?.toFixed(1) || '0'}%`, icon: TrendingUp, change: topCoc.address?.split(',')[0] || 'N/A' },
+      ];
+
+      // Top 4 holdings for cards
+      const topHoldings = [];
+      if (coolwood) topHoldings.push(coolwood);
+      topHoldings.push(...properties.slice(0, coolwood ? 3 : 4));
+
       return (
         <motion.div initial="hidden" animate="visible" variants={containerVariants}>
-          <PageTitle title="Dashboard" description="Welcome back! Here's an overview of the EarlCoin DAO." />
+          <PageTitle title="Dashboard" description="EarlCoin DAO — Real portfolio overview from on-chain data." />
           
           <motion.div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8" variants={containerVariants}>
             {kpiData.map((kpi, index) => (
@@ -55,10 +86,10 @@ import React from 'react';
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">{kpi.title}</CardTitle>
-                    <kpi.icon className="h-4 w-4 text-muted-foreground" />
+                    <kpi.icon className={`h-4 w-4 ${kpi.color || 'text-muted-foreground'}`} />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">{kpi.value}</div>
+                    <div className={`text-2xl font-bold ${kpi.color || ''}`}>{kpi.value}</div>
                     <p className="text-xs text-muted-foreground">{kpi.change}</p>
                   </CardContent>
                 </Card>
@@ -66,70 +97,91 @@ import React from 'react';
             ))}
           </motion.div>
 
-          <motion.div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <motion.div className="lg:col-span-2" variants={itemVariants}>
-              <Card className="h-[400px] p-4">
+          <motion.div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+            <motion.div variants={itemVariants}>
+              <Card className="p-4">
                 <CardHeader>
-                  <CardTitle>Treasury Growth</CardTitle>
+                  <CardTitle>Portfolio NAV Over Time</CardTitle>
+                  <p className="text-xs text-muted-foreground">Lofty tokens (excl. 1 Coolwood) — current from live data</p>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
-                    <AreaChart data={chartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                      <defs>
-                        <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8}/>
-                          <stop offset="95%" stopColor="#8884d8" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <XAxis dataKey="name" stroke="rgba(255,255,255,0.5)" />
-                      <YAxis stroke="rgba(255,255,255,0.5)" tickFormatter={(value) => `$${(value/1000)}k`} />
+                    <LineChart data={currentNav} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                      <XAxis dataKey="date" stroke="rgba(255,255,255,0.5)" tick={{ fontSize: 11 }} />
+                      <YAxis stroke="rgba(255,255,255,0.5)" tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                       <Tooltip
-                        contentStyle={{
-                          backgroundColor: 'rgba(20, 20, 40, 0.8)',
-                          borderColor: 'rgba(136, 132, 216, 0.5)',
-                          color: '#fff'
-                        }}
+                        contentStyle={{ backgroundColor: 'rgba(20, 20, 40, 0.9)', borderColor: 'rgba(139, 92, 246, 0.5)', color: '#fff', borderRadius: '8px' }}
+                        formatter={(value) => [`$${value.toLocaleString()}`, 'NAV']}
                       />
-                      <Area type="monotone" dataKey="value" stroke="#8884d8" fillOpacity={1} fill="url(#colorValue)" />
-                    </AreaChart>
+                      <Line type="monotone" dataKey="nav" stroke="#8b5cf6" strokeWidth={2.5} dot={{ fill: '#8b5cf6', r: 3 }} activeDot={{ r: 5 }} />
+                    </LineChart>
                   </ResponsiveContainer>
                 </CardContent>
               </Card>
             </motion.div>
+
             <motion.div variants={itemVariants}>
-              <Card>
+              <Card className="p-4">
                 <CardHeader>
-                  <CardTitle>Recent Activity</CardTitle>
+                  <CardTitle>Geographic Distribution</CardTitle>
+                  <p className="text-xs text-muted-foreground">By gross token value across {stateCount} states</p>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-start gap-4">
-                    <div className="bg-green-500/20 p-2 rounded-full"><DollarSign className="h-4 w-4 text-green-400" /></div>
-                    <div>
-                      <p className="text-sm font-medium">Lofty Property Purchase</p>
-                      <p className="text-xs text-muted-foreground">Proposal #12 passed. 123 Main St acquired.</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-4">
-                    <div className="bg-blue-500/20 p-2 rounded-full"><Users className="h-4 w-4 text-blue-400" /></div>
-                    <div>
-                      <p className="text-sm font-medium">New Member Joined</p>
-                      <p className="text-xs text-muted-foreground">Wallet 0x...a4b2 joined the DAO.</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-4">
-                    <div className="bg-purple-500/20 p-2 rounded-full"><BarChart className="h-4 w-4 text-purple-400" /></div>
-                    <div>
-                      <p className="text-sm font-medium">Q2 Report Published</p>
-                      <p className="text-xs text-muted-foreground">Financials and performance updated.</p>
-                    </div>
+                <CardContent>
+                  <USMap stateValues={stateValues} />
+                  <div className="grid grid-cols-3 gap-2 mt-4">
+                    {Object.entries(stateValues)
+                      .sort((a, b) => b[1] - a[1])
+                      .slice(0, 6)
+                      .map(([state, value]) => (
+                        <div key={state} className="text-center">
+                          <p className="text-xs text-muted-foreground">{state}</p>
+                          <p className="text-sm font-semibold">{formatUSD(value)}</p>
+                        </div>
+                      ))}
                   </div>
                 </CardContent>
               </Card>
             </motion.div>
+          </motion.div>
+
+          <motion.div variants={itemVariants}>
+            <Card>
+              <CardHeader>
+                <CardTitle>Top Holdings</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {topHoldings.map((h, i) => (
+                    <div key={i} className={`flex items-start gap-3 p-3 rounded-lg ${h.isCoolwood ? 'bg-yellow-500/10 border border-yellow-500/20' : 'bg-accent/30'}`}>
+                      <div className={`p-2 rounded-full shrink-0 ${h.isCoolwood ? 'bg-yellow-500/20' : i === 1 ? 'bg-green-500/20' : i === 2 ? 'bg-blue-500/20' : 'bg-purple-500/20'}`}>
+                        {h.isCoolwood ? <AlertTriangle className="h-4 w-4 text-yellow-400" /> :
+                         i === 1 ? <DollarSign className="h-4 w-4 text-green-400" /> :
+                         <Landmark className={`h-4 w-4 ${i === 2 ? 'text-blue-400' : 'text-purple-400'}`} />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">{h.address.split(',').slice(0, 2).join(',')}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatUSD(h.value)} · {h.tokens.toLocaleString()} tokens
+                          {h.coc > 0 && ` · ${h.coc.toFixed(1)}% CoC`}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          <motion.div variants={itemVariants} className="mt-6">
+            <p className="text-xs text-muted-foreground text-center">
+              Live on-chain data — Algorand Indexer + LoftyAssist API — W1 + Treasury wallets
+              {lastUpdated && ` — Fetched ${lastUpdated.toLocaleTimeString()}`}
+            </p>
           </motion.div>
         </motion.div>
       );
     };
 
     export default Dashboard;
+
