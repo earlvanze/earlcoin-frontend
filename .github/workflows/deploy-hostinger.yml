@@ -1,0 +1,54 @@
+name: Deploy to Hostinger
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/deploy-hostinger.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install and build
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+
+      - name: Deploy to Hostinger via FTP
+        env:
+          FTP_HOST: 157.173.209.157
+          FTP_USER: u847403612.app.earlco.in
+          FTP_PASS: ${{ secrets.HOSTINGER_FTP_PW }}
+        run: |
+          cd frontend/dist
+          echo "Uploading files..."
+          find . -type f | while read -r file; do
+            clean_file="${file#./}"
+            curl -T "$file" "ftp://${FTP_HOST}/${clean_file}" \
+              --user "${FTP_USER}:${FTP_PASS}" \
+              --ssl-reqd --ftp-create-dirs --silent
+          done
+
+      - name: Clear Cloudflare cache
+        env:
+          CF_ZONE: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          curl -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/purge_cache" \
+            -H "Authorization: Bearer ${CF_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data '{"purge_everything":true}'
