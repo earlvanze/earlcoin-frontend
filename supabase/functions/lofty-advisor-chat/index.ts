@@ -4,9 +4,9 @@ type ChatMessage = { role?: string; content?: string };
 
 const MCP_URL = 'https://www.loftyassist.com/mcp';
 const LOFTYASSIST_API_KEY = Deno.env.get('LOFTYASSIST_API_KEY') ?? Deno.env.get('LOFTYASSIST_MCP_TOKEN') ?? '';
-const SAGE_ROUTER_BASE_URL = (Deno.env.get('SAGE_ROUTER_BASE_URL') ?? 'https://sage-router-434058661374.us-central1.run.app/v1').replace(/\/$/, '');
-const SAGE_ROUTER_API_KEY = Deno.env.get('SAGE_ROUTER_API_KEY') ?? '';
-const SAGE_ROUTER_MODEL = Deno.env.get('COMPASS_YIELD_MODEL') ?? Deno.env.get('SAGE_ROUTER_MODEL') ?? 'frontier';
+const COMPASS_YIELD_BASE_URL = (Deno.env.get('COMPASS_YIELD_BASE_URL') ?? Deno.env.get('NVIDIA_NIM_BASE_URL') ?? 'https://integrate.api.nvidia.com/v1').replace(/\/$/, '');
+const COMPASS_YIELD_API_KEY = Deno.env.get('COMPASS_YIELD_API_KEY') ?? Deno.env.get('NVIDIA_API_KEY') ?? '';
+const COMPASS_YIELD_MODEL = Deno.env.get('COMPASS_YIELD_MODEL') ?? Deno.env.get('NVIDIA_NIM_MODEL') ?? 'moonshotai/kimi-k2-instruct';
 
 const jsonResponse = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), {
@@ -164,7 +164,7 @@ function compactToolSchema(name: string): Record<string, unknown> {
   return { type: 'object', properties: {} };
 }
 
-async function callSageRouter(messages: ChatCompletionMessage[], tools: McpTool[]) {
+async function callCompassYieldLlm(messages: ChatCompletionMessage[], tools: McpTool[]) {
   const routerTools = tools
     .filter((tool) => tool.name)
     .map((tool) => ({
@@ -176,14 +176,16 @@ async function callSageRouter(messages: ChatCompletionMessage[], tools: McpTool[
       },
     }));
 
-  const res = await fetch(`${SAGE_ROUTER_BASE_URL}/chat/completions`, {
+  if (!COMPASS_YIELD_API_KEY) throw new Error('NVIDIA_API_KEY or COMPASS_YIELD_API_KEY is not configured for Compass Yield');
+
+  const res = await fetch(`${COMPASS_YIELD_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
-      ...(SAGE_ROUTER_API_KEY ? { Authorization: `Bearer ${SAGE_ROUTER_API_KEY}` } : {}),
+      Authorization: `Bearer ${COMPASS_YIELD_API_KEY}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: SAGE_ROUTER_MODEL,
+      model: COMPASS_YIELD_MODEL,
       temperature: 0.2,
       max_tokens: 700,
       messages,
@@ -192,7 +194,7 @@ async function callSageRouter(messages: ChatCompletionMessage[], tools: McpTool[
     }),
   });
   const text = await res.text();
-  if (!res.ok) throw new Error(`Sage Router HTTP ${res.status}: ${text.slice(0, 500)}`);
+  if (!res.ok) throw new Error(`Compass Yield LLM HTTP ${res.status}: ${text.slice(0, 500)}`);
   return JSON.parse(text);
 }
 
@@ -206,9 +208,9 @@ async function runCompassYieldAdvisor(messages: ChatMessage[], tools: McpTool[],
 
   let usedTools: string[] = [];
   for (let round = 0; round < 6; round += 1) {
-    const completion = await callSageRouter(routerMessages, allowedTools);
+    const completion = await callCompassYieldLlm(routerMessages, allowedTools);
     const choice = completion?.choices?.[0]?.message;
-    if (!choice) throw new Error('Sage Router returned no message');
+    if (!choice) throw new Error('Compass Yield LLM returned no message');
 
     const assistantMessage: ChatCompletionMessage = {
       role: 'assistant',
@@ -258,7 +260,7 @@ async function runCompassYieldAdvisor(messages: ChatMessage[], tools: McpTool[],
     }
   }
 
-  const final = await callSageRouter([
+  const final = await callCompassYieldLlm([
     ...routerMessages,
     { role: 'user', content: 'Summarize the answer now using the data already gathered. Do not call more tools.' },
   ], []);
@@ -467,7 +469,7 @@ Deno.serve(async (req) => {
 
     if (agent === 'compass-yield' || agent === 'investment-advisor' || agent === 'lofty-assist-intel') {
       const { answer, usedTools } = await runCompassYieldAdvisor(messages, tools, sessionId);
-      return jsonResponse(200, { answer, tool: 'compass-yield', model: SAGE_ROUTER_MODEL, usedTools, source: 'supabase-edge+sage-router+mcp-tools' });
+      return jsonResponse(200, { answer, tool: 'compass-yield', model: COMPASS_YIELD_MODEL, usedTools, source: 'supabase-edge+nvidia-nim+mcp-tools' });
     }
 
     if (toolNames.includes(agent)) {
