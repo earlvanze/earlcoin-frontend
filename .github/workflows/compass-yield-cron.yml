@@ -1,0 +1,77 @@
+name: Compass Yield Supabase Refresh
+
+on:
+  # Daily at 08:15 UTC. Adjust if we want this closer to US market hours.
+  schedule:
+    - cron: '15 8 * * *'
+  workflow_dispatch:
+    inputs:
+      deployable_capital:
+        description: 'Treasury deployable capital for position sizing'
+        required: false
+        default: '5000'
+      min_alpha_pct:
+        description: 'Minimum alpha % for sizing'
+        required: false
+        default: '50'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compass-yield-supabase-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    env:
+      EARLCOIN_SUPABASE_URL: ${{ secrets.EARLCOIN_SUPABASE_URL || 'https://aeaufjjeimtkiixdmrtq.supabase.co' }}
+      EARLCOIN_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.EARLCOIN_SUPABASE_SERVICE_ROLE_KEY }}
+      DISCORD_COMPASS_YIELD_WEBHOOK: ${{ secrets.DISCORD_COMPASS_YIELD_WEBHOOK }}
+      TREASURY_DEPLOYABLE_CAPITAL: ${{ github.event.inputs.deployable_capital || '5000' }}
+      MIN_ALPHA_FOR_SIZING: ${{ github.event.inputs.min_alpha_pct || '50' }}
+      LOFTY_API: https://www.loftyassist.com/api/properties
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: python -m pip install --upgrade requests
+
+      - name: Validate required secrets
+        run: |
+          if [ -z "$EARLCOIN_SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "Missing EARLCOIN_SUPABASE_SERVICE_ROLE_KEY repo secret" >&2
+            exit 1
+          fi
+
+      - name: Refresh Compass Yield position sizing in Supabase
+        run: python scripts/compute_position_sizing.py
+
+      - name: Notify Discord on success
+        if: ${{ success() }}
+        run: |
+          if [ -z "$DISCORD_COMPASS_YIELD_WEBHOOK" ]; then
+            echo "No DISCORD_COMPASS_YIELD_WEBHOOK configured, skipping Discord notification"
+            exit 0
+          fi
+          curl -sS -X POST "$DISCORD_COMPASS_YIELD_WEBHOOK" \
+            -H 'Content-Type: application/json' \
+            --data "{\"content\":\"✅ Compass Yield Supabase refresh completed: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}"
+
+      - name: Notify Discord on failure
+        if: ${{ failure() }}
+        run: |
+          if [ -z "$DISCORD_COMPASS_YIELD_WEBHOOK" ]; then
+            echo "No DISCORD_COMPASS_YIELD_WEBHOOK configured, skipping Discord notification"
+            exit 0
+          fi
+          curl -sS -X POST "$DISCORD_COMPASS_YIELD_WEBHOOK" \
+            -H 'Content-Type: application/json' \
+            --data "{\"content\":\"⚠️ Compass Yield Supabase refresh failed: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}"
