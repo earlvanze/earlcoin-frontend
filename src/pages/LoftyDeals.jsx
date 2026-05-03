@@ -623,10 +623,20 @@ const LoftyDeals = () => {
 
                 const avmLookup = buildAvmLookup(avmRows || []);
 
-                // Fetch LP strategy backtest
-                const { data: strategyData, error: strategyErr } = await supabase
-                    .from('lofty_lp_strategy')
-                    .select('*');
+                // Legacy Supabase LP strategy shortlist is fallback-only now.
+                // Primary LP Strategy comes from live direct Lofty marketplace liquidity data.
+                let legacyStrategyData = [];
+                let strategyErr = null;
+                try {
+                    const strategyRes = await supabase
+                        .from('lofty_lp_strategy')
+                        .select('*');
+                    legacyStrategyData = strategyRes.data || [];
+                    strategyErr = strategyRes.error || null;
+                } catch (err) {
+                    strategyErr = err;
+                    console.warn('Legacy Supabase LP strategy unavailable, using live Lofty fallback', err);
+                }
 
                 // Fetch live Lofty property metadata + marketplace whitelist once for all tabs
                 // LoftyAssist may be blocked by CORS or proxy misconfiguration — handle gracefully
@@ -723,9 +733,11 @@ const LoftyDeals = () => {
                 });
                 setAlphaDeals(mergeAlphaDealsWithAvm(alphaWithLp, avmLookup));
 
-                if (strategyErr) throw strategyErr;
+                if (strategyErr) {
+                    console.warn('Legacy Supabase LP strategy returned an error, using live Lofty fallback', strategyErr);
+                }
 
-                const storedStrategyData = attachLoftyPropertyMeta(strategyData || [], loftyPropertyLookup)
+                const storedStrategyData = attachLoftyPropertyMeta(legacyStrategyData || [], loftyPropertyLookup)
                     .sort((a, b) => {
                         const rankA = typeof a.proposal_rank === 'number' ? a.proposal_rank : Number.POSITIVE_INFINITY;
                         const rankB = typeof b.proposal_rank === 'number' ? b.proposal_rank : Number.POSITIVE_INFINITY;
@@ -734,10 +746,8 @@ const LoftyDeals = () => {
                     })
                     .slice(0, 20);
 
-                const liveStrategyFallback = storedStrategyData.length === 0
-                    ? buildLpStrategyFallback(marketplaceProperties)
-                    : [];
-                setStrategyData(storedStrategyData.length > 0 ? storedStrategyData : liveStrategyFallback);
+                const liveStrategyData = buildLpStrategyFallback(marketplaceProperties);
+                setStrategyData(liveStrategyData.length > 0 ? liveStrategyData : storedStrategyData);
             } catch (err) {
                 setError(err.message);
             } finally {
