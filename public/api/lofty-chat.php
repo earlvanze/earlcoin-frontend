@@ -43,12 +43,12 @@ if ($prompt === '') {
     exit;
 }
 
-$token = getenv('LOFTYASSIST_MCP_TOKEN') ?: getenv('MCP_AUTH_TOKEN') ?: '';
+$token = getenv('LOFTYASSIST_MCP_TOKEN') ?: getenv('LOFTYASSIST_API_KEY') ?: getenv('MCP_AUTH_TOKEN') ?: '';
 if ($token === '') {
     http_response_code(503);
     echo json_encode([
         'error' => 'LoftyAssist MCP token is not configured on the server',
-        'hint' => 'Set LOFTYASSIST_MCP_TOKEN in the hosting environment, then redeploy or reload PHP.',
+        'hint' => 'Set LOFTYASSIST_API_KEY or LOFTYASSIST_MCP_TOKEN in the hosting environment, then redeploy or reload PHP.',
     ]);
     exit;
 }
