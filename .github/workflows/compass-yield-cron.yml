@@ -28,7 +28,6 @@ jobs:
     env:
       EARLCOIN_SUPABASE_URL: ${{ secrets.EARLCOIN_SUPABASE_URL || 'https://aeaufjjeimtkiixdmrtq.supabase.co' }}
       EARLCOIN_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.EARLCOIN_SUPABASE_SERVICE_ROLE_KEY }}
-      DISCORD_COMPASS_YIELD_WEBHOOK: ${{ secrets.DISCORD_COMPASS_YIELD_WEBHOOK }}
       TREASURY_DEPLOYABLE_CAPITAL: ${{ github.event.inputs.deployable_capital || '5000' }}
       MIN_ALPHA_FOR_SIZING: ${{ github.event.inputs.min_alpha_pct || '50' }}
       LOFTY_API: https://www.loftyassist.com/api/properties
@@ -53,25 +52,3 @@ jobs:
 
       - name: Refresh Compass Yield position sizing in Supabase
         run: python scripts/compute_position_sizing.py
-
-      - name: Notify Discord on success
-        if: ${{ success() }}
-        run: |
-          if [ -z "$DISCORD_COMPASS_YIELD_WEBHOOK" ]; then
-            echo "No DISCORD_COMPASS_YIELD_WEBHOOK configured, skipping Discord notification"
-            exit 0
-          fi
-          curl -sS -X POST "$DISCORD_COMPASS_YIELD_WEBHOOK" \
-            -H 'Content-Type: application/json' \
-            --data "{\"content\":\"✅ Compass Yield Supabase refresh completed: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}"
-
-      - name: Notify Discord on failure
-        if: ${{ failure() }}
-        run: |
-          if [ -z "$DISCORD_COMPASS_YIELD_WEBHOOK" ]; then
-            echo "No DISCORD_COMPASS_YIELD_WEBHOOK configured, skipping Discord notification"
-            exit 0
-          fi
-          curl -sS -X POST "$DISCORD_COMPASS_YIELD_WEBHOOK" \
-            -H 'Content-Type: application/json' \
-            --data "{\"content\":\"⚠️ Compass Yield Supabase refresh failed: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}"
