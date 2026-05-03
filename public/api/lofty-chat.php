@@ -142,9 +142,6 @@ try {
         $agent,
         'lofty_assist_intel',
         'lofty-assist-intel',
-        'investment_advisor',
-        'investment-advisor',
-        'advisor',
         'chat',
         'ask',
     ];
@@ -171,7 +168,7 @@ try {
         }
     }
 
-    throw new Exception($lastError ?: 'No compatible investment advisor tool found on MCP server');
+    throw new Exception($lastError ?: 'No compatible LoftyAssist MCP tool found');
 } catch (Exception $e) {
     http_response_code(502);
     echo json_encode(['error' => $e->getMessage()]);

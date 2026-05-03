@@ -41,30 +41,30 @@ const LoftyAdvisorChat = ({ className }) => {
     setLoading(true);
 
     try {
-      const advisorPayload = {
+      const intelPayload = {
         agent: 'lofty-assist-intel',
         messages: buildMessagesPayload(messages, prompt),
       };
 
       let payload = null;
-      let advisorError = null;
+      let intelError = null;
 
       const { data, error: edgeError } = await supabase.functions.invoke('lofty-advisor-chat', {
-        body: advisorPayload,
+        body: intelPayload,
       });
 
       if (!edgeError && data?.answer) {
         payload = data;
       } else {
-        advisorError = edgeError?.message || data?.error || null;
+        intelError = edgeError?.message || data?.error || null;
         const res = await fetch('/api/lofty-chat.php', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(advisorPayload),
+          body: JSON.stringify(intelPayload),
         });
         const fallbackPayload = await res.json().catch(() => ({}));
         if (!res.ok) {
-          throw new Error(fallbackPayload?.error || advisorError || `Advisor unavailable (${res.status})`);
+          throw new Error(fallbackPayload?.error || intelError || `Lofty Assist Intel unavailable (${res.status})`);
         }
         payload = fallbackPayload;
       }
@@ -73,7 +73,7 @@ const LoftyAdvisorChat = ({ className }) => {
         ...current,
         {
           role: 'assistant',
-          content: payload?.answer || 'I did not get a usable answer from the advisor.',
+          content: payload?.answer || 'I did not get a usable answer from Lofty Assist Intel.',
         },
       ]);
     } catch (err) {
@@ -83,7 +83,7 @@ const LoftyAdvisorChat = ({ className }) => {
         ...current,
         {
           role: 'assistant',
-          content: `I could not reach the LoftyAssist investment advisor yet: ${msg}`,
+          content: `I could not reach Lofty Assist Intel yet: ${msg}`,
         },
       ]);
     } finally {
