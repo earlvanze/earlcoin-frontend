@@ -33,24 +33,34 @@ function parseSseJson(body: string) {
   throw new Error('MCP returned an empty event stream');
 }
 
-async function mcpRequest(method: string, params: Record<string, unknown>, id: number) {
+async function mcpRequest(method: string, params: Record<string, unknown>, id: number | null, sessionId?: string) {
+  const headers: Record<string, string> = {
+    Accept: 'application/json, text/event-stream',
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${LOFTYASSIST_API_KEY}`,
+    'User-Agent': 'EarlCoin-LoftyAdvisor/1.0',
+  };
+  if (sessionId) headers['Mcp-Session-Id'] = sessionId;
+
+  const message = id == null
+    ? { jsonrpc: '2.0', method, params }
+    : { jsonrpc: '2.0', id, method, params };
+
   const res = await fetch(MCP_URL, {
     method: 'POST',
-    headers: {
-      Accept: 'application/json, text/event-stream',
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${LOFTYASSIST_API_KEY}`,
-      'User-Agent': 'EarlCoin-LoftyAdvisor/1.0',
-    },
-    body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
+    headers,
+    body: JSON.stringify(message),
   });
 
   const text = await res.text();
   if (!res.ok) throw new Error(`MCP HTTP ${res.status}: ${text.slice(0, 300)}`);
 
+  const nextSessionId = res.headers.get('mcp-session-id') || res.headers.get('Mcp-Session-Id') || sessionId;
+  if (!text.trim()) return { result: null, sessionId: nextSessionId };
+
   const decoded = parseSseJson(text);
   if (decoded?.error) throw new Error(decoded.error?.message || JSON.stringify(decoded.error));
-  return decoded?.result ?? decoded;
+  return { result: decoded?.result ?? decoded, sessionId: nextSessionId };
 }
 
 function resultText(result: unknown): string {
@@ -73,6 +83,83 @@ function resultText(result: unknown): string {
   return JSON.stringify(result, null, 2);
 }
 
+function parseToolJson(result: unknown): unknown {
+  const text = resultText(result);
+  try { return JSON.parse(text); } catch (_) { return text; }
+}
+
+function num(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function money(value: unknown): string {
+  const n = num(value);
+  return `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+}
+
+function pct(value: unknown): string {
+  const n = num(value);
+  return `${n.toFixed(1)}%`;
+}
+
+function propertyLine(p: Record<string, unknown>, metric: string): string {
+  const address = String(p.address || 'Unknown property');
+  const coc = pct(p.cocYieldPercent);
+  const cap = pct(p.capRatePercent);
+  const lp = money(p.liquidityPoolPriceUsd);
+  const avm = money(p.avmPriceUsd);
+  const disc = pct(p.liquidityPoolVsAvmPremiumOrDiscountPercent);
+  return `- ${address}: ${metric}. CoC ${coc}, cap ${cap}, LP ${lp}, AVM ${avm}, LP vs AVM ${disc}`;
+}
+
+async function runInternalInvestmentAdvisor(prompt: string, sessionId: string) {
+  const response = await mcpRequest('tools/call', {
+    name: 'get_properties',
+    arguments: { status: 'active', market: null, propertyType: null },
+  }, 20, sessionId || undefined);
+
+  const parsed = parseToolJson(response.result);
+  if (!Array.isArray(parsed)) {
+    return `I reached LoftyAssist MCP, but could not parse the property list yet. Raw result:\n${resultText(response.result).slice(0, 1200)}`;
+  }
+
+  const props = parsed as Record<string, unknown>[];
+  const q = prompt.toLowerCase();
+  const wantsAvoid = /avoid|risk|bad|worst|overpriced|red flag/.test(q);
+  const wantsAlpha = /alpha|discount|undervalued|nav|avm|upside/.test(q);
+  const wantsCashflow = /cash|yield|coc|income|rent/.test(q) || (!wantsAvoid && !wantsAlpha);
+
+  const topCashflow = [...props]
+    .filter((p) => num(p.cocYieldPercent) > 0)
+    .sort((a, b) => num(b.cocYieldPercent) - num(a.cocYieldPercent))
+    .slice(0, 5);
+  const topDiscount = [...props]
+    .filter((p) => num(p.liquidityPoolVsAvmPremiumOrDiscountPercent) < 0)
+    .sort((a, b) => num(a.liquidityPoolVsAvmPremiumOrDiscountPercent) - num(b.liquidityPoolVsAvmPremiumOrDiscountPercent))
+    .slice(0, 5);
+  const avoidList = [...props]
+    .filter((p) => num(p.liquidityPoolVsAvmPremiumOrDiscountPercent) > 25 || num(p.cocYieldPercent) < 3 || num(p.totalLoansUsd) > num(p.totalInvestmentUsd) * 0.75)
+    .sort((a, b) => num(b.liquidityPoolVsAvmPremiumOrDiscountPercent) - num(a.liquidityPoolVsAvmPremiumOrDiscountPercent))
+    .slice(0, 5);
+
+  const sections: string[] = [];
+  sections.push(`I pulled ${props.length} active properties from LoftyAssist MCP and ranked them for research support, not financial advice.`);
+
+  if (wantsCashflow) {
+    sections.push(`\nBest cashflow/yield candidates:\n${topCashflow.map((p) => propertyLine(p, `CoC ${pct(p.cocYieldPercent)}`)).join('\n')}`);
+  }
+  if (wantsAlpha) {
+    sections.push(`\nBest apparent alpha/discount candidates vs AVM:\n${topDiscount.length ? topDiscount.map((p) => propertyLine(p, `LP vs AVM ${pct(p.liquidityPoolVsAvmPremiumOrDiscountPercent)}`)).join('\n') : '- I did not find active properties trading below AVM in this pull.'}`);
+  }
+  if (wantsAvoid) {
+    sections.push(`\nNames I would scrutinize or avoid first:\n${avoidList.length ? avoidList.map((p) => propertyLine(p, `risk flag LP vs AVM ${pct(p.liquidityPoolVsAvmPremiumOrDiscountPercent)}`)).join('\n') : '- No obvious avoid-list names triggered the simple premium/low-yield/debt screens.'}`);
+  }
+
+  sections.push('\nNext step: for any specific property, ask by address and I can pull property-level details/updates/documents from MCP.');
+  return sections.join('\n');
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return jsonResponse(405, { error: 'method not allowed' });
@@ -89,31 +176,35 @@ Deno.serve(async (req) => {
 
     if (!prompt) return jsonResponse(400, { error: 'messages are required' });
 
+    let sessionId = '';
     try {
-      await mcpRequest('initialize', {
+      const init = await mcpRequest('initialize', {
         protocolVersion: '2024-11-05',
         capabilities: {},
         clientInfo: { name: 'EarlCoin Lofty Advisor', version: '1.0.0' },
       }, 1);
+      sessionId = init.sessionId || '';
+      if (sessionId) {
+        await mcpRequest('notifications/initialized', {}, null, sessionId);
+      }
     } catch (_) {
       // Some MCP gateways do not require lifecycle initialization.
     }
 
-    const toolNames = [...new Set([agent, 'investment_advisor', 'investment-advisor', 'advisor', 'chat', 'ask'])];
-    let lastError = '';
-    for (const toolName of toolNames) {
-      try {
-        const result = await mcpRequest('tools/call', {
-          name: toolName,
-          arguments: { prompt, question: prompt, messages },
-        }, 10);
-        return jsonResponse(200, { answer: resultText(result), tool: toolName, source: 'supabase-edge' });
-      } catch (err) {
-        lastError = err instanceof Error ? err.message : String(err);
-      }
+    const listed = await mcpRequest('tools/list', {}, 2, sessionId || undefined);
+    const tools = Array.isArray((listed.result as { tools?: unknown[] })?.tools) ? (listed.result as { tools: Array<{ name?: string }> }).tools : [];
+    const toolNames = tools.map((tool) => tool.name).filter(Boolean) as string[];
+
+    if (toolNames.includes(agent)) {
+      const response = await mcpRequest('tools/call', {
+        name: agent,
+        arguments: { prompt, question: prompt, messages },
+      }, 10, sessionId || undefined);
+      return jsonResponse(200, { answer: resultText(response.result), tool: agent, source: 'supabase-edge' });
     }
 
-    throw new Error(lastError || 'No compatible investment advisor tool found on MCP server');
+    const answer = await runInternalInvestmentAdvisor(prompt, sessionId);
+    return jsonResponse(200, { answer, tool: 'internal-investment-advisor', source: 'supabase-edge+mcp-tools' });
   } catch (err) {
     return jsonResponse(502, { error: err instanceof Error ? err.message : String(err) });
   }
