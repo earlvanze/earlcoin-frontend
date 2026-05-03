@@ -21,7 +21,7 @@ const LoftyAdvisorChat = ({ className }) => {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      content: 'Ask me about Lofty deals, cashflow, alpha, LP strategy, or portfolio fit. I route to LoftyAssist MCP and EarlCoin deal intelligence.',
+      content: 'Ask Compass Yield about Lofty deals, cashflow, alpha, LP strategy, risk, or portfolio fit. I reason over LoftyAssist MCP plus EarlCoin deal intelligence.',
     },
   ]);
   const [input, setInput] = useState('');
@@ -42,7 +42,7 @@ const LoftyAdvisorChat = ({ className }) => {
 
     try {
       const intelPayload = {
-        agent: 'lofty-assist-intel',
+        agent: 'compass-yield',
         messages: buildMessagesPayload(messages, prompt),
       };
 
@@ -64,7 +64,7 @@ const LoftyAdvisorChat = ({ className }) => {
         });
         const fallbackPayload = await res.json().catch(() => ({}));
         if (!res.ok) {
-          throw new Error(fallbackPayload?.error || intelError || `Lofty Assist Intel unavailable (${res.status})`);
+          throw new Error(fallbackPayload?.error || intelError || `Compass Yield Intel unavailable (${res.status})`);
         }
         payload = fallbackPayload;
       }
@@ -73,7 +73,7 @@ const LoftyAdvisorChat = ({ className }) => {
         ...current,
         {
           role: 'assistant',
-          content: payload?.answer || 'I did not get a usable answer from Lofty Assist Intel.',
+          content: payload?.answer || 'I did not get a usable answer from Compass Yield Intel.',
         },
       ]);
     } catch (err) {
@@ -83,7 +83,7 @@ const LoftyAdvisorChat = ({ className }) => {
         ...current,
         {
           role: 'assistant',
-          content: `I could not reach Lofty Assist Intel yet: ${msg}`,
+          content: `I could not reach Compass Yield Intel yet: ${msg}`,
         },
       ]);
     } finally {
@@ -96,10 +96,10 @@ const LoftyAdvisorChat = ({ className }) => {
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-lg">
           <Sparkles className="h-5 w-5 text-primary" />
-          Lofty Assist Intel
+          Compass Yield Intel
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          Powered by LoftyAssist MCP. Outputs are research support, not financial advice.
+          Compass Yield investment-advisor agent over LoftyAssist MCP. Research support, not financial advice.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -138,7 +138,7 @@ const LoftyAdvisorChat = ({ className }) => {
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendPrompt();
             }}
-            placeholder="Ask Lofty Assist Intel about a property, yield, alpha, risk, or portfolio allocation…"
+            placeholder="Ask Compass Yield about a property, yield, alpha, risk, or portfolio allocation…"
             className="min-h-[72px]"
           />
           <Button onClick={() => sendPrompt()} disabled={!canSend} className="self-end">

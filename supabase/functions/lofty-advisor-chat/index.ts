@@ -4,6 +4,11 @@ type ChatMessage = { role?: string; content?: string };
 
 const MCP_URL = 'https://www.loftyassist.com/mcp';
 const LOFTYASSIST_API_KEY = Deno.env.get('LOFTYASSIST_API_KEY') ?? Deno.env.get('LOFTYASSIST_MCP_TOKEN') ?? '';
+const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
+const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') ?? '';
+const LLM_API_KEY = OPENROUTER_API_KEY || OPENAI_API_KEY;
+const LLM_BASE_URL = OPENROUTER_API_KEY ? 'https://openrouter.ai/api/v1' : 'https://api.openai.com/v1';
+const OPENAI_MODEL = Deno.env.get('COMPASS_YIELD_MODEL') ?? Deno.env.get('OPENAI_MODEL') ?? (OPENROUTER_API_KEY ? 'openai/gpt-4o-mini' : 'gpt-5-mini');
 
 const jsonResponse = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), {
@@ -81,6 +86,189 @@ function resultText(result: unknown): string {
     if (typeof r.text === 'string') return r.text;
   }
   return JSON.stringify(result, null, 2);
+}
+
+
+type McpTool = { name?: string; description?: string; inputSchema?: Record<string, unknown> };
+
+type OpenAIMessage = {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content?: string | null;
+  tool_call_id?: string;
+  tool_calls?: Array<{
+    id: string;
+    type: 'function';
+    function: { name: string; arguments: string };
+  }>;
+};
+
+function normalizeSchema(schema: unknown): Record<string, unknown> {
+  if (schema && typeof schema === 'object') return schema as Record<string, unknown>;
+  return { type: 'object', additionalProperties: true };
+}
+
+function chatMessagesForOpenAI(messages: ChatMessage[]): OpenAIMessage[] {
+  return messages
+    .map((message) => {
+      const role = String(message.role || 'user') === 'assistant' ? 'assistant' : 'user';
+      const content = String(message.content || '').trim();
+      return content ? { role, content } as OpenAIMessage : null;
+    })
+    .filter(Boolean) as OpenAIMessage[];
+}
+
+const COMPASS_YIELD_SYSTEM_PROMPT = `You are Compass Yield, EarlCoin's investment-advisor agent.
+You are an actual reasoning layer over LoftyAssist MCP tools. LoftyAssist MCP is only the data/tool layer.
+
+Scope:
+- Analyze Lofty real estate token opportunities, yield, LP strategy, order books, price history, platform stats, PM updates, documents, risk, and portfolio fit.
+- Use LoftyAssist MCP tools whenever live/current facts are needed. Do not pretend to have data you did not fetch.
+- Be concise, analytical, and direct. Prefer bullets over tables.
+- Clearly separate data, interpretation, and uncertainty.
+- You provide research support, not financial advice.
+
+Compass Yield style:
+- Start with the answer, then supporting evidence.
+- For property questions, search first if the property id is unknown, then fetch full details or order book as needed.
+- For screening questions, use get_properties or run_screener, then rank with explicit criteria.
+- For risk questions, check price/yield/liquidity/order-book/PM-update/profile signals when relevant.
+- If a user asks for a model, recommendation, or allocation, give a practical framework and caveats.
+`;
+
+
+function selectedMcpToolsForPrompt(prompt: string, tools: McpTool[]): McpTool[] {
+  const q = prompt.toLowerCase();
+  const names = new Set<string>(['search_properties', 'get_property', 'get_properties']);
+  if (/order book|bid|ask|spread|liquidity/.test(q)) names.add('get_property_order_book');
+  if (/price history|ohlc|chart|trend|momentum|volatility/.test(q)) names.add('get_property_market_prices');
+  if (/document|docs?|p&l|financial|download/.test(q)) names.add('get_property_documents');
+  if (/pm|manager|update|news|changed|changes/.test(q)) { names.add('get_property_pm_updates'); names.add('get_latest_updates'); }
+  if (/profile|seller|manager reputation|reputation/.test(q)) names.add('get_profiles');
+  if (/platform|market index|macro|stats|statistics/.test(q)) { names.add('get_platform_stats'); names.add('get_market_index'); }
+  if (/portfolio|owned|holdings|my /.test(q)) { names.add('get_portfolio_summary'); names.add('get_owned_properties'); names.add('get_portfolio_history'); }
+  if (/screen|filter/.test(q)) names.add('run_screener');
+  const byName = new Map(tools.map((tool) => [tool.name, tool]));
+  return [...names]
+    .map((name) => byName.get(name))
+    .filter(Boolean)
+    .map((tool) => ({ name: tool!.name, description: tool!.description, inputSchema: compactToolSchema(String(tool!.name)) }));
+}
+
+function compactToolSchema(name: string): Record<string, unknown> {
+  if (name === 'search_properties') return { type: 'object', properties: { term: { type: 'string' } }, required: ['term'] };
+  if (['get_property', 'get_property_order_book', 'get_property_market_prices', 'get_property_pm_updates', 'get_property_documents'].includes(name)) {
+    return { type: 'object', properties: { propertyId: { type: 'string' } }, required: ['propertyId'] };
+  }
+  if (name === 'get_properties') return { type: 'object', properties: { status: { type: 'string', enum: ['active', 'archived', 'all'] }, market: { type: ['string', 'null'] }, propertyType: { type: ['string', 'null'] } } };
+  if (name === 'get_portfolio_history') return { type: 'object', properties: { daysBack: { type: 'number' } } };
+  if (name === 'get_latest_updates') return { type: 'object', properties: { date: { type: 'string' } } };
+  if (name === 'run_screener') return { type: 'object', properties: { filtersJson: { type: 'string' } }, required: ['filtersJson'] };
+  return { type: 'object', properties: {} };
+}
+
+async function callOpenAI(messages: OpenAIMessage[], tools: McpTool[]) {
+  const openAiTools = tools
+    .filter((tool) => tool.name)
+    .map((tool) => ({
+      type: 'function',
+      function: {
+        name: String(tool.name),
+        description: String(tool.description || `LoftyAssist MCP tool ${tool.name}`).slice(0, 500),
+        parameters: normalizeSchema(tool.inputSchema),
+      },
+    }));
+
+  const res = await fetch(`${LLM_BASE_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${LLM_API_KEY}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://app.earlco.in',
+      'X-Title': 'EarlCoin Compass Yield',
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      temperature: 0.2,
+      max_tokens: 700,
+      messages,
+      tools: openAiTools,
+      tool_choice: 'auto',
+    }),
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`OpenAI HTTP ${res.status}: ${text.slice(0, 500)}`);
+  return JSON.parse(text);
+}
+
+async function runCompassYieldAdvisor(messages: ChatMessage[], tools: McpTool[], sessionId: string) {
+  if (!LLM_API_KEY) throw new Error('OPENAI_API_KEY or OPENROUTER_API_KEY is not configured for Compass Yield');
+
+  const prompt = latestUserText(messages);
+  const allowedTools = selectedMcpToolsForPrompt(prompt, tools);
+  const openAiMessages: OpenAIMessage[] = [
+    { role: 'system', content: COMPASS_YIELD_SYSTEM_PROMPT },
+    ...chatMessagesForOpenAI(messages),
+  ];
+
+  let usedTools: string[] = [];
+  for (let round = 0; round < 6; round += 1) {
+    const completion = await callOpenAI(openAiMessages, allowedTools);
+    const choice = completion?.choices?.[0]?.message;
+    if (!choice) throw new Error('OpenAI returned no message');
+
+    const assistantMessage: OpenAIMessage = {
+      role: 'assistant',
+      content: typeof choice.content === 'string' ? choice.content : null,
+      tool_calls: Array.isArray(choice.tool_calls) ? choice.tool_calls : undefined,
+    };
+    openAiMessages.push(assistantMessage);
+
+    const toolCalls = Array.isArray(choice.tool_calls) ? choice.tool_calls : [];
+    if (!toolCalls.length) {
+      return { answer: String(choice.content || '').trim(), usedTools };
+    }
+
+    for (const toolCall of toolCalls) {
+      const toolName = String(toolCall?.function?.name || '');
+      let args: Record<string, unknown> = {};
+      try {
+        args = JSON.parse(String(toolCall?.function?.arguments || '{}'));
+      } catch (_) {
+        args = {};
+      }
+
+      if (!allowedTools.some((tool) => tool.name === toolName)) {
+        openAiMessages.push({
+          role: 'tool',
+          tool_call_id: String(toolCall.id),
+          content: `Tool ${toolName} is not available.`,
+        });
+        continue;
+      }
+
+      try {
+        const result = await callTool(toolName, args, sessionId, 100 + round);
+        usedTools.push(toolName);
+        openAiMessages.push({
+          role: 'tool',
+          tool_call_id: String(toolCall.id),
+          content: resultText(result).slice(0, 12000),
+        });
+      } catch (err) {
+        openAiMessages.push({
+          role: 'tool',
+          tool_call_id: String(toolCall.id),
+          content: `Tool error: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+    }
+  }
+
+  const final = await callOpenAI([
+    ...openAiMessages,
+    { role: 'user', content: 'Summarize the answer now using the data already gathered. Do not call more tools.' },
+  ], []);
+  return { answer: String(final?.choices?.[0]?.message?.content || '').trim(), usedTools };
 }
 
 
@@ -280,8 +468,17 @@ Deno.serve(async (req) => {
     }
 
     const listed = await mcpRequest('tools/list', {}, 2, sessionId || undefined);
-    const tools = Array.isArray((listed.result as { tools?: unknown[] })?.tools) ? (listed.result as { tools: Array<{ name?: string }> }).tools : [];
+    const tools = Array.isArray((listed.result as { tools?: unknown[] })?.tools) ? (listed.result as { tools: McpTool[] }).tools : [];
     const toolNames = tools.map((tool) => tool.name).filter(Boolean) as string[];
+
+    if (agent === 'compass-yield' || agent === 'investment-advisor' || agent === 'lofty-assist-intel') {
+      if (LLM_API_KEY) {
+        const { answer, usedTools } = await runCompassYieldAdvisor(messages, tools, sessionId);
+        return jsonResponse(200, { answer, tool: 'compass-yield', model: OPENAI_MODEL, usedTools, source: 'supabase-edge+openai+mcp-tools' });
+      }
+      const answer = await runInternalInvestmentAdvisor(prompt, messages, sessionId);
+      return jsonResponse(200, { answer, tool: 'compass-yield-fallback', source: 'supabase-edge+mcp-tools' });
+    }
 
     if (toolNames.includes(agent)) {
       const response = await mcpRequest('tools/call', {
@@ -292,7 +489,7 @@ Deno.serve(async (req) => {
     }
 
     const answer = await runInternalInvestmentAdvisor(prompt, messages, sessionId);
-    return jsonResponse(200, { answer, tool: 'lofty-assist-intel', source: 'supabase-edge+mcp-tools' });
+    return jsonResponse(200, { answer, tool: 'lofty-assist-intel-fallback', source: 'supabase-edge+mcp-tools' });
   } catch (err) {
     return jsonResponse(502, { error: err instanceof Error ? err.message : String(err) });
   }
