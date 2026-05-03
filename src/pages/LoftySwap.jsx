@@ -76,7 +76,6 @@ async function fetchLoftyHoldings(walletAddress) {
           const isLoftyCreator = LOFTY_CREATORS.has(params.creator || '');
           const unitName = (params['unit-name'] || '').toUpperCase();
           const isLoftyUnit = LOFTY_UNIT_PREFIXES.some(p => unitName.startsWith(p));
-          if (!isLoftyCreator && !isLoftyUnit) return null;
           return {
             assetId: asset['asset-id'],
             amount: asset.amount,
@@ -85,6 +84,8 @@ async function fetchLoftyHoldings(walletAddress) {
             unitName: params['unit-name'] || '',
             defaultFrozen: params['default-frozen'] || false,
             total: params.total || 0,
+            isLoftyCreator,
+            isLoftyUnit,
           };
         } catch { return null; }
       })
@@ -269,11 +270,13 @@ const LoftySwap = () => {
         // SECURITY #1: Filter out LP pool tokens
         let filtered = rawHoldings.filter(h => !isLpToken(h.unitName, h.name));
 
-        // SECURITY #5: LoftyAssist property allowlist — fail closed if no data
+        // Prefer the live LoftyAssist asset allowlist. Lofty token metadata can change
+        // across migrations, so do not rely solely on creator/unit-name heuristics.
+        // If LoftyAssist is temporarily unavailable, fall back to the metadata checks.
         if (Object.keys(meta).length > 0) {
           filtered = filtered.filter(h => meta[h.assetId]);
         } else {
-          filtered = [];
+          filtered = filtered.filter(h => h.isLoftyCreator || h.isLoftyUnit);
         }
 
         // Fetch app's opt-in status for ASA readiness check
