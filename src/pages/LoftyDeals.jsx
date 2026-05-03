@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
 import { LOFTY_API } from '@/lib/wallets';
 import { MARKETPLACE_API, attachLoftyPropertyMeta, buildLoftyPropertyLookup, buildMarketplaceIdSet, filterTradableDeals, normalizeCashflowDeal, fetchLpPrices } from '@/lib/loftyDeals';
+import LoftyAdvisorChat from '@/components/LoftyAdvisorChat';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -720,6 +721,10 @@ const LoftyDeals = () => {
             description="Alpha opportunities and LP strategy analysis by Compass Yield." 
             icon={<Bot className="h-8 w-8 text-primary" />}
           />
+
+          <motion.div variants={itemVariants} className="mb-6">
+            <LoftyAdvisorChat />
+          </motion.div>
           
           {!hasDeals ? (
             <Card className="p-8 text-center">
