@@ -37,6 +37,32 @@ const itemVariants = {
   visible: { y: 0, opacity: 1, transition: { type: 'spring' } },
 };
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const waitForOrderState = async (sessionId, maxWaitMs = 60000) => {
+  const start = Date.now();
+  let lastStatus = null;
+
+  while (Date.now() - start < maxWaitMs) {
+    const { data, error } = await supabase
+      .from('treasury_orders')
+      .select('id, status, tx_id')
+      .eq('stripe_session_id', sessionId)
+      .maybeSingle();
+
+    if (!error && data) {
+      lastStatus = data.status;
+      if (['fulfilled', 'paid', 'pending_optin', 'pending_fulfillment', 'missing_wallet'].includes(data.status)) {
+        return data;
+      }
+    }
+
+    await sleep(2000);
+  }
+
+  return { status: lastStatus || 'unknown' };
+};
+
 const OrderBook = ({ onPriceSelect }) => {
   const bids = [
     { price: 1.24, size: 350, total: 434.00 },
@@ -149,21 +175,40 @@ const TradeForm = ({ price, setPrice }) => {
 
       if (status === 'success' && sessionId) {
         try {
-          const { data, error } = await supabase.functions.invoke('treasury-claim', {
-            body: JSON.stringify({ session_id: sessionId })
-          });
-          if (error || data?.error) {
-            throw new Error(error?.message || data?.error || 'Claim failed');
+          const order = await waitForOrderState(sessionId);
+
+          if (order?.status === 'fulfilled') {
+            toast({ title: 'Tokens Delivered', description: `Treasury transfer completed${order?.tx_id ? ` (TX: ${order.tx_id})` : ''}.` });
+          } else if (order?.status === 'missing_wallet') {
+            toast({
+              variant: 'destructive',
+              title: 'Wallet Required',
+              description: 'Connect your wallet before checkout so tokens can be delivered automatically.'
+            });
+          } else {
+            const { data, error } = await supabase.functions.invoke('treasury-claim', {
+              body: JSON.stringify({ session_id: sessionId })
+            });
+
+            if (error || data?.error) {
+              throw new Error(error?.message || data?.error || 'Claim failed');
+            }
+
+            toast({ title: 'Tokens Delivered', description: `Treasury transfer completed${data?.txId ? ` (TX: ${data.txId})` : ''}.` });
           }
-          toast({ title: 'Tokens Delivered', description: `Treasury transfer completed${data?.txId ? ` (TX: ${data.txId})` : ''}.` });
         } catch (err) {
-          toast({ variant: 'destructive', title: 'Claim Failed', description: err.message || 'Please try again.' });
+          toast({
+            variant: 'destructive',
+            title: 'Claim Pending',
+            description: err?.message || 'Payment confirmed but token fulfillment is still processing. Please retry in a moment.'
+          });
         }
       }
 
-      searchParams.delete('status');
-      searchParams.delete('session_id');
-      setSearchParams(searchParams);
+      const next = new URLSearchParams(searchParams);
+      next.delete('status');
+      next.delete('session_id');
+      setSearchParams(next, { replace: true });
     };
 
     handleStatus();
@@ -299,7 +344,7 @@ const TradeForm = ({ price, setPrice }) => {
           user_id: user.id,
           price_id: EARL_STRIPE_PRICE_ID,
           quantity: Math.ceil(parseFloat(earlAmount)),
-          wallet_address: accountAddress || 'not_connected',
+          wallet_address: accountAddress || null,
           purchase_type: 'earl'
         }),
       });
@@ -327,27 +372,32 @@ const TradeForm = ({ price, setPrice }) => {
       return;
     }
 
-    if (!GOV_APP_ID || !DAO_TREASURY_WALLET) {
-      toast({ variant: 'destructive', title: 'Treasury Not Configured', description: 'Set VITE_GOV_APP_ID and/or VITE_TREASURY_ADDRESS to enable swaps.' });
+    if (!DAO_TREASURY_WALLET) {
+      toast({ variant: 'destructive', title: 'Treasury Not Configured', description: 'Set VITE_TREASURY_ADDRESS to enable wallet purchases.' });
       return;
     }
 
     if (!ATOMIC_SWAP_ENABLED) {
-      toast({ variant: 'destructive', title: 'Atomic Swap Disabled', description: 'Enable VITE_ENABLE_ATOMIC_SWAP=true after deploying on-chain swap logic.' });
+      toast({ variant: 'destructive', title: 'Wallet Buy Disabled', description: 'Enable VITE_ENABLE_ATOMIC_SWAP=true to run wallet USDC purchases.' });
       return;
     }
 
-    if (!earlAmount || parseFloat(earlAmount) <= 0) {
-      toast({ variant: 'destructive', title: 'Invalid Amount', description: 'Please enter a valid amount.' });
+    if (activeTab === 'sell') {
+      toast({ variant: 'destructive', title: 'Sell Not Live Yet', description: 'USDC sell path is not implemented yet. Buy flow is live first.' });
       return;
     }
 
-    if (activeTab === 'buy' && !isOptedIn.earl) {
+    if (!earlAmount || parseFloat(earlAmount) <= 0 || !usdcAmount || parseFloat(usdcAmount) <= 0) {
+      toast({ variant: 'destructive', title: 'Invalid Amount', description: 'Please enter valid EARL and USDC amounts.' });
+      return;
+    }
+
+    if (!isOptedIn.earl) {
       toast({ variant: 'destructive', title: 'Opt-in Required', description: 'Please opt into EARL token first.' });
       return;
     }
 
-    if (activeTab === 'buy' && !isOptedIn.usdc) {
+    if (!isOptedIn.usdc) {
       toast({ variant: 'destructive', title: 'Opt-in Required', description: 'Please opt into USDC first.' });
       return;
     }
@@ -355,74 +405,56 @@ const TradeForm = ({ price, setPrice }) => {
     setLoading(true);
     try {
       const suggestedParams = await algodClient.getTransactionParams().do();
+      const usdcAmountMicro = Math.floor(parseFloat(usdcAmount) * 1000000);
+      const requestedEarl = Math.floor(parseFloat(earlAmount));
 
-      const usdcAmountMicroAlgos = Math.floor(parseFloat(usdcAmount) * 1000000);
-      const earlAmountMicroAlgos = Math.floor(parseFloat(earlAmount) * 1000000);
-
-      let payTxn;
-      let appCallTxn;
-
-      // Use TextEncoder instead of Buffer for better browser compatibility in v3
-      const encoder = new TextEncoder();
-
-      if (activeTab === 'buy') {
-        payTxn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
-          sender: accountAddress,
-          receiver: DAO_TREASURY_WALLET,
-          amount: usdcAmountMicroAlgos,
-          assetIndex: USDC_ASA_ID,
-          suggestedParams,
-        });
-
-        appCallTxn = algosdk.makeApplicationNoOpTxnFromObject({
-          sender: accountAddress,
-          appIndex: GOV_APP_ID,
-          appArgs: [
-            encoder.encode("trade"),
-            encoder.encode("buy"),
-            algosdk.encodeUint64(usdcAmountMicroAlgos),
-          ],
-          suggestedParams,
-        });
-      } else {
-        payTxn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
-          sender: accountAddress,
-          receiver: DAO_TREASURY_WALLET,
-          amount: earlAmountMicroAlgos,
-          assetIndex: EARL_ASA_ID,
-          suggestedParams,
-        });
-
-        appCallTxn = algosdk.makeApplicationNoOpTxnFromObject({
-          sender: accountAddress,
-          appIndex: GOV_APP_ID,
-          appArgs: [
-            encoder.encode("trade"),
-            encoder.encode("sell"),
-            algosdk.encodeUint64(earlAmountMicroAlgos),
-          ],
-          suggestedParams,
-        });
+      if (usdcAmountMicro <= 0 || requestedEarl <= 0) {
+        throw new Error('Amount must be greater than zero.');
       }
 
-      const txnGroup = algosdk.assignGroupID([payTxn, appCallTxn]);
+      const paymentTxn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
+        sender: accountAddress,
+        receiver: DAO_TREASURY_WALLET,
+        amount: usdcAmountMicro,
+        assetIndex: USDC_ASA_ID,
+        suggestedParams,
+      });
 
-      const singleTxnGroups = [
-        { txn: payTxn, signers: [accountAddress] },
-        { txn: appCallTxn, signers: [accountAddress] }
-      ];
+      const signedPayment = await signTransactions([[{ txn: paymentTxn, signers: [accountAddress] }]], { requiredSender: accountAddress });
+      const sendResult = await algodClient.sendRawTransaction(signedPayment).do();
+      const paymentTxId = normalizeTxId(sendResult);
+      if (!paymentTxId) {
+        throw new Error('USDC payment submission failed.');
+      }
 
-      const signedTxns = await signTransactions([singleTxnGroups], { requiredSender: accountAddress });
+      await algosdk.waitForConfirmation(algodClient, paymentTxId, 4);
+
+      const { data, error } = await supabase.functions.invoke('fulfill-usdca-purchase', {
+        body: JSON.stringify({
+          payment_tx_id: paymentTxId,
+          usdc_amount: usdcAmountMicro,
+          requested_earl_amount: requestedEarl,
+          wallet_address: accountAddress,
+        })
+      });
+
+      if (error || data?.error) {
+        throw new Error(error?.message || data?.error || 'Fulfillment failed');
+      }
 
       toast({
-        title: '🚧 Atomic Swap Coming Soon!',
-        description: "This feature isn't implemented yet-but don't worry! You can request it in your next prompt! 🚀"
+        title: 'Purchase Completed',
+        description: `USDC payment confirmed and EARL delivered${data?.txId ? ` (TX: ${data.txId})` : ''}.`
       });
 
       await fetchBalances();
     } catch (error) {
-      console.error('Swap error:', error);
-      toast({ variant: 'destructive', title: 'Swap Failed', description: error.message || 'Transaction failed' });
+      console.error('Wallet purchase error:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Wallet Purchase Failed',
+        description: error?.message || 'Transaction failed'
+      });
     } finally {
       setLoading(false);
     }
@@ -585,12 +617,12 @@ const TradeForm = ({ price, setPrice }) => {
                   disabled={loading || !isConnected || !isOptedIn.earl || !isOptedIn.usdc || !ATOMIC_SWAP_ENABLED}
                 >
                   {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRightLeft className="mr-2 h-4 w-4" />}
-                  Swap USDC for EARL
+                  Buy with USDC Wallet
                 </Button>
                 <p className="text-xs text-muted-foreground text-center">
                   {ATOMIC_SWAP_ENABLED
-                    ? `Atomic swap using your Pera Wallet (ASA ${EARL_ASA_ID})`
-                    : 'Atomic swap disabled until on-chain swap logic is deployed.'}
+                    ? `Wallet purchase sends USDCa to treasury then fulfills EARL (ASA ${EARL_ASA_ID}).`
+                    : 'Wallet USDCa purchase disabled until fulfillment flow is enabled.'}
                 </p>
               </>
             )}
@@ -630,15 +662,13 @@ const TradeForm = ({ price, setPrice }) => {
             <Button
               onClick={handleSwapWithPera}
               className="w-full bg-red-600 hover:bg-red-700 text-white"
-              disabled={loading || !isConnected || !isOptedIn.earl || !isOptedIn.usdc || !ATOMIC_SWAP_ENABLED}
+              disabled
             >
-              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRightLeft className="mr-2 h-4 w-4" />}
-              Swap EARL for USDC
+              <ArrowRightLeft className="mr-2 h-4 w-4" />
+              Sell EARL for USDC (Coming Soon)
             </Button>
             <p className="text-xs text-muted-foreground text-center">
-              {ATOMIC_SWAP_ENABLED
-                ? 'Atomic swap EARL for USDC on-chain using Pera Wallet'
-                : 'Atomic swap disabled until on-chain swap logic is deployed.'}
+              Sell path is intentionally disabled until order-book / swap settlement is deployed.
             </p>
           </CardContent>
         </TabsContent>

@@ -239,7 +239,7 @@ logger.error = (msg, options) => {
 
 export default defineConfig({
 	customLogger: logger,
-	cacheDir: '/home/digit/.openclaw/workspace/.vite-cache/earlcoin_frontend',
+	cacheDir: '.vite-cache',
 	plugins: [
 		...(isDev ? [inlineEditPlugin(), editModeDevPlugin(), iframeRouteRestorationPlugin(), selectionModePlugin()] : []),
 		react(),
@@ -256,7 +256,7 @@ export default defineConfig({
 		},
 	},
 	build: {
-		outDir: '/home/digit/.openclaw/workspace/.vite-build/earlcoin_frontend',
+		outDir: 'dist',
 		emptyOutDir: true,
 		rollupOptions: {
 			external: [

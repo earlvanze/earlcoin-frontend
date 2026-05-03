@@ -1,88 +1,225 @@
-import React from 'react';
-    import { motion } from 'framer-motion';
-    import PageTitle from '@/components/PageTitle';
-    import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-    import { Landmark, Bitcoin, HelpCircle } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
+import { Building2, DatabaseZap, DollarSign, FileUp, Layers3, RefreshCcw } from 'lucide-react';
+import PageTitle from '@/components/PageTitle';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  DEFAULT_LOFTY_PORTFOLIO_SEED,
+  buildPortfolioSummary,
+  normalizeLoftyPortfolioPayload,
+} from '@/lib/loftyPortfolioSeed';
 
-    const realEstateAssets = [
-      { name: '123 Main St, Anytown, USA', value: '$350,000', roi: '15%', imageUrl: 'A modern suburban house with a two-car garage' },
-      { name: '789 Broadway, Metropolis, USA', value: '$850,000', roi: '9%', imageUrl: 'A sleek, modern apartment building in a city' },
-      { name: '456 Oak Avenue, Lofty Token', value: '$12,500', roi: '11%', imageUrl: 'A charming two-story house with a large front porch' },
-    ];
+const STORAGE_KEY = 'earlcoin:lofty-portfolio-seed';
 
-    const cryptoAssets = [
-      { name: 'Bitcoin', symbol: 'BTC', value: '$150,000', allocation: '12%' },
-      { name: 'Ethereum', symbol: 'ETH', value: '$75,000', allocation: '6%' },
-      { name: 'USDC', symbol: 'USDC', value: '$250,000', allocation: '20%' },
-    ];
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { staggerChildren: 0.1 } },
+};
 
-    const containerVariants = {
-      hidden: { opacity: 0 },
-      visible: { opacity: 1, transition: { staggerChildren: 0.15 } },
-    };
+const itemVariants = {
+  hidden: { y: 20, opacity: 0 },
+  visible: { y: 0, opacity: 1, transition: { type: 'spring' } },
+};
 
-    const itemVariants = {
-      hidden: { y: 20, opacity: 0 },
-      visible: { y: 0, opacity: 1, transition: { type: 'spring' } },
-    };
+const formatUsd = (value) => {
+  if (!Number.isFinite(value) || value <= 0) return '—';
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value);
+};
 
-    const Portfolio = () => {
-      return (
-        <motion.div initial="hidden" animate="visible" variants={containerVariants}>
-          <PageTitle title="DAO Portfolio" description="A diversified portfolio of real estate and digital assets." />
+const Portfolio = () => {
+  const [seed, setSeed] = useState(DEFAULT_LOFTY_PORTFOLIO_SEED);
+  const [importText, setImportText] = useState('');
+  const [importError, setImportError] = useState('');
 
-          <motion.div variants={itemVariants} className="mb-12">
-            <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2"><Landmark /> Real Estate Holdings</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {realEstateAssets.map((asset, index) => (
-                <Card key={index} className="overflow-hidden group">
-                  <div className="relative h-40">
-                    <img alt={asset.name} className="absolute h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" src="https://images.unsplash.com/photo-1595872018818-97555653a011" />
-                    <div className="absolute inset-0 bg-black/40"></div>
-                  </div>
-                  <CardHeader>
-                    <CardTitle className="text-lg">{asset.name}</CardTitle>
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (!saved) return;
+      const parsed = JSON.parse(saved);
+      setSeed(normalizeLoftyPortfolioPayload(parsed));
+    } catch (error) {
+      console.error('Failed to load Lofty portfolio seed:', error);
+    }
+  }, []);
+
+  const summary = useMemo(() => buildPortfolioSummary(seed), [seed]);
+  const holdings = useMemo(
+    () => [...(seed?.holdings || [])].sort((a, b) => Number(b.sharesOwned || 0) - Number(a.sharesOwned || 0)),
+    [seed]
+  );
+
+  const handleImport = () => {
+    try {
+      const parsed = JSON.parse(importText);
+      const normalized = normalizeLoftyPortfolioPayload(parsed);
+      setSeed(normalized);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+      setImportError('');
+    } catch (error) {
+      setImportError(error?.message || 'Invalid Lofty import payload.');
+    }
+  };
+
+  const resetToDefault = () => {
+    setSeed(DEFAULT_LOFTY_PORTFOLIO_SEED);
+    localStorage.removeItem(STORAGE_KEY);
+    setImportText('');
+    setImportError('');
+  };
+
+  return (
+    <motion.div initial="hidden" animate="visible" variants={containerVariants} className="space-y-6">
+      <PageTitle
+        title="Seed Portfolio"
+        description="Current-version in-kind contribution set for EarlCoin, modeled from Lofty account-style holdings."
+      />
+
+      <motion.div variants={itemVariants}>
+        <Card>
+          <CardHeader className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge>Lofty seed set</Badge>
+              <Badge variant="secondary">State-driven</Badge>
+              <Badge variant="outline">Snapshot as of {seed.snapshotAsOf || 'unknown'}</Badge>
+            </div>
+            <CardTitle>Portfolio seeding basis</CardTitle>
+            <CardDescription>
+              This page now treats Earl&apos;s Lofty holdings as the initial in-kind contribution set. Until a live Lofty export is wired,
+              the portfolio runs off an importable seed payload instead of fake placeholder assets.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm text-muted-foreground">
+            <p><span className="text-foreground font-medium">Source:</span> {seed.source}</p>
+            {seed.notes && <p>{seed.notes}</p>}
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Properties</CardDescription>
+            <CardTitle className="text-3xl flex items-center gap-2"><Building2 className="h-6 w-6" /> {summary.propertyCount}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Total shares</CardDescription>
+            <CardTitle className="text-3xl flex items-center gap-2"><Layers3 className="h-6 w-6" /> {summary.totalShares.toLocaleString()}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Known current value</CardDescription>
+            <CardTitle className="text-3xl flex items-center gap-2"><DollarSign className="h-6 w-6" /> {formatUsd(summary.totalValueUsd)}</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 text-xs text-muted-foreground">Shows only holdings with imported value data.</CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Known monthly income</CardDescription>
+            <CardTitle className="text-3xl flex items-center gap-2"><DatabaseZap className="h-6 w-6" /> {formatUsd(summary.totalMonthlyIncomeUsd)}</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 text-xs text-muted-foreground">Can be populated once a richer Lofty export is imported.</CardContent>
+        </Card>
+      </motion.div>
+
+      <motion.div variants={itemVariants}>
+        <Card>
+          <CardHeader>
+            <CardTitle>In-kind contribution holdings</CardTitle>
+            <CardDescription>
+              These are the property positions the fund can seed from Earl&apos;s personal Lofty holdings. Default view is the checked-in seed snapshot;
+              paste a fresher Lofty export JSON below to override it locally.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {holdings.map((holding) => (
+                <Card key={holding.id} className="border-border/60 bg-background/40">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <CardTitle className="text-lg leading-tight">{holding.propertyName}</CardTitle>
+                        <CardDescription>
+                          {holding.lastUpdated ? `Snapshot updated ${holding.lastUpdated}` : 'Snapshot date pending'}
+                        </CardDescription>
+                      </div>
+                      <Badge variant="outline">{Number(holding.sharesOwned).toLocaleString()} shares</Badge>
+                    </div>
                   </CardHeader>
-                  <CardContent className="flex justify-between items-center">
+                  <CardContent className="grid grid-cols-2 gap-3 text-sm">
                     <div>
-                      <p className="text-sm text-muted-foreground">Current Value</p>
-                      <p className="text-xl font-bold">{asset.value}</p>
+                      <p className="text-muted-foreground">Current value</p>
+                      <p className="font-semibold">{formatUsd(holding.currentValueUsd)}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground text-right">Est. ROI</p>
-                      <p className="text-xl font-bold text-green-400">{asset.roi}</p>
+                      <p className="text-muted-foreground">Cost basis</p>
+                      <p className="font-semibold">{formatUsd(holding.investedUsd)}</p>
                     </div>
+                    <div>
+                      <p className="text-muted-foreground">Unit price</p>
+                      <p className="font-semibold">{formatUsd(holding.unitPriceUsd)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Monthly income</p>
+                      <p className="font-semibold">{formatUsd(holding.monthlyIncomeUsd)}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-muted-foreground">Status</p>
+                      <p className="font-semibold capitalize">{holding.status || 'seeded'}</p>
+                    </div>
+                    {holding.notes && (
+                      <div className="col-span-2 text-muted-foreground">{holding.notes}</div>
+                    )}
                   </CardContent>
                 </Card>
               ))}
             </div>
-          </motion.div>
+          </CardContent>
+        </Card>
+      </motion.div>
 
-          <motion.div variants={itemVariants}>
-            <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2"><Bitcoin /> Crypto Treasury</h2>
-            <Card>
-              <CardContent className="p-0">
-                <div className="divide-y divide-border/20">
-                  {cryptoAssets.map((asset, index) => (
-                    <div key={index} className="flex items-center justify-between p-4 hover:bg-accent/50 transition-colors">
-                      <div className="flex items-center gap-4">
-                        <div className="bg-secondary p-3 rounded-full">
-                          {asset.symbol === 'BTC' ? <Bitcoin className="h-5 w-5 text-orange-400" /> : asset.symbol === 'ETH' ? <HelpCircle className="h-5 w-5 text-blue-400" /> : <HelpCircle className="h-5 w-5 text-green-400" />}
-                        </div>
-                        <div>
-                          <p className="font-bold">{asset.name} ({asset.symbol})</p>
-                          <p className="text-sm text-muted-foreground">Allocation: {asset.allocation}</p>
-                        </div>
-                      </div>
-                      <p className="font-semibold text-lg">{asset.value}</p>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </motion.div>
-      );
-    };
+      <motion.div variants={itemVariants}>
+        <Card>
+          <CardHeader>
+            <CardTitle>Import fresher Lofty holdings</CardTitle>
+            <CardDescription>
+              Supported shape: either <span className="font-mono">{"{ holdings: [...] }"}</span> or a raw array.
+              Each holding should include a property/address field and a shares field.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Textarea
+              value={importText}
+              onChange={(event) => setImportText(event.target.value)}
+              placeholder={`{
+  "source": "Lofty account export",
+  "snapshotAsOf": "2026-03-13",
+  "holdings": [
+    {
+      "property": "123 Main St, City, ST",
+      "shares": 42,
+      "currentValueUsd": 4200,
+      "monthlyIncomeUsd": 31.5
+    }
+  ]
+}`}
+              className="min-h-[220px] font-mono text-xs"
+            />
+            {importError && <p className="text-sm text-destructive">{importError}</p>}
+            <div className="flex flex-wrap gap-3">
+              <Button onClick={handleImport}><FileUp className="mr-2 h-4 w-4" /> Import Lofty snapshot</Button>
+              <Button variant="outline" onClick={resetToDefault}><RefreshCcw className="mr-2 h-4 w-4" /> Reset to checked-in seed</Button>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+    </motion.div>
+  );
+};
 
-    export default Portfolio;
+export default Portfolio;

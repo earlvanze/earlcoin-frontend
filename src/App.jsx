@@ -4,6 +4,7 @@ import { AnimatePresence } from 'framer-motion';
 import Layout from '@/components/Layout';
 import Dashboard from '@/pages/Dashboard';
 import Proposals from '@/pages/Proposals';
+import ProposalDetail from '@/pages/ProposalDetail';
 import CreateProposal from '@/pages/CreateProposal';
 import Portfolio from '@/pages/Portfolio';
 import Trade from '@/pages/Trade';
@@ -31,6 +32,7 @@ function App() {
             <Routes location={location} key={location.pathname}>
               <Route index element={<Dashboard />} />
               <Route path="/proposals" element={<Proposals />} />
+              <Route path="/proposals/:proposalId" element={<ProposalDetail />} />
               <Route path="/proposals/new" element={<CreateProposal />} />
               <Route path="/portfolio" element={<Portfolio />} />
               <Route path="/trade" element={<Trade />} />

@@ -5,11 +5,11 @@ export const ALGOD_URL = import.meta.env.VITE_ALGOD_URL || 'https://testnet-api.
 export const INDEXER_URL = import.meta.env.VITE_INDEXER_URL || 'https://testnet-idx.algonode.cloud';
 export const NETWORK = import.meta.env.VITE_NETWORK || 'testnet';
 
-export const EARL_ASA_ID = Number(import.meta.env.VITE_EARL_ASA_ID || '756256156');
-export const VNFT_ADMIN_ADDRESS = import.meta.env.VITE_VNFT_ADMIN_ADDRESS || 'DTXJYIPBBFDMREX27RS4ZY6YN7E455ASXKCYAENM77SJIEVPWB2UZZAPMA';
+export const EARL_ASA_ID = Number(import.meta.env.VITE_EARL_ASA_ID || '747899490');
+export const VNFT_ADMIN_ADDRESS = import.meta.env.VITE_VNFT_ADMIN_ADDRESS || 'M7FJSBLDR6BK4ELZCGUZQIKCQPRAKSOAJNLC6WR6QH3UNTE4YLY5WX3NFE';
 export const USDC_ASA_ID = Number(import.meta.env.VITE_USDC_ASA_ID || '10458941');
-export const GOV_APP_ID = Number(import.meta.env.VITE_GOV_APP_ID || '0');
-export const TREASURY_ADDRESS = import.meta.env.VITE_TREASURY_ADDRESS || '';
+export const GOV_APP_ID = Number(import.meta.env.VITE_GOV_APP_ID || '756389510');
+export const TREASURY_ADDRESS = import.meta.env.VITE_TREASURY_ADDRESS || 'M7FJSBLDR6BK4ELZCGUZQIKCQPRAKSOAJNLC6WR6QH3UNTE4YLY5WX3NFE';
 
 export const STRIPE_PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
 export const EARL_STRIPE_PRICE_ID = import.meta.env.VITE_EARL_STRIPE_PRICE_ID || '';
