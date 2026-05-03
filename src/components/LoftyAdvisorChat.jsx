@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/lib/customSupabaseClient';
 
 const starterPrompts = [
   'Which Lofty deals have the best risk-adjusted cashflow right now?',
@@ -40,18 +41,32 @@ const LoftyAdvisorChat = ({ className }) => {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/lofty-chat.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agent: 'investment-advisor',
-          messages: buildMessagesPayload(messages, prompt),
-        }),
+      const advisorPayload = {
+        agent: 'investment-advisor',
+        messages: buildMessagesPayload(messages, prompt),
+      };
+
+      let payload = null;
+      let advisorError = null;
+
+      const { data, error: edgeError } = await supabase.functions.invoke('lofty-advisor-chat', {
+        body: advisorPayload,
       });
 
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(payload?.error || `Advisor unavailable (${res.status})`);
+      if (!edgeError && data?.answer) {
+        payload = data;
+      } else {
+        advisorError = edgeError?.message || data?.error || null;
+        const res = await fetch('/api/lofty-chat.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(advisorPayload),
+        });
+        const fallbackPayload = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(fallbackPayload?.error || advisorError || `Advisor unavailable (${res.status})`);
+        }
+        payload = fallbackPayload;
       }
 
       setMessages((current) => [
