@@ -7,7 +7,7 @@ const LOFTYASSIST_API_KEY = Deno.env.get('LOFTYASSIST_API_KEY') ?? Deno.env.get(
 const SAGE_ROUTER_BASE_URL = (Deno.env.get('SAGE_ROUTER_BASE_URL') ?? 'https://sage-router-434058661374.us-central1.run.app/v1').replace(/\/$/, '');
 const SAGE_ROUTER_API_KEY = Deno.env.get('SAGE_ROUTER_API_KEY') ?? '';
 const COMPASS_YIELD_PROVIDER = Deno.env.get('COMPASS_YIELD_PROVIDER') ?? 'nvidia-nim';
-const COMPASS_YIELD_MODEL = Deno.env.get('COMPASS_YIELD_MODEL') ?? 'moonshotai/kimi-k2-instruct';
+const COMPASS_YIELD_MODEL = Deno.env.get('COMPASS_YIELD_MODEL') ?? 'auto';
 
 const jsonResponse = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), {
