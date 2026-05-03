@@ -10,7 +10,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { useAppContext } from '@/contexts/AppContext';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { cn } from '@/lib/utils';
-import { fetchLpPrices } from '@/lib/loftyDeals';
+import { fetchLoftyPropertyItems, fetchLpPrices } from '@/lib/loftyDeals';
 import { algodClient } from '@/lib/algorand';
 import { WALLETS, INDEXER_BASE, LOFTY_API } from '@/lib/wallets';
 import { EARL_ASA_ID, INKIND_EXCHANGE_APP_ID, VNFT_ASA_ID } from '@/lib/config';
@@ -109,9 +109,7 @@ const getLoftyContractId = (liquidityPool, key) => (
 
 async function fetchLoftyAssistProperties() {
   try {
-    const res = await fetch(LOFTY_API);
-    if (!res.ok) return {};
-    const items = await res.json();
+    const items = await fetchLoftyPropertyItems({ includeAssistFallback: true });
     const map = {};
     for (const item of items) {
       const p = item?.property || {};
@@ -120,9 +118,12 @@ async function fetchLoftyAssistProperties() {
         address: p.address || 'Unknown',
         city: p.market || p.city || '',
         state: p.state || '',
-        tokenValue: p.tokenValue || null,
+        tokenValue: lp.price || lp.priceLow || p.tokenValue || null,
         listingStatus: p.listingStatus || null,
-        // LP interface app ID for DODO PMM on-chain pricing
+        assetName: p.assetName || null,
+        assetUnit: p.assetUnit || null,
+        // LP interface app ID for DODO PMM on-chain pricing. Direct Lofty data is primary;
+        // LoftyAssist fallback enriches these contracts when direct payload does not include them.
         lpInterfaceAppId: getLoftyContractId(lp, 'lpInterface'),
         // Admin app ID stores oracle + k params
         adminAppId: getLoftyContractId(lp, 'admin')
@@ -131,7 +132,10 @@ async function fetchLoftyAssistProperties() {
       if (p.newAssetId) map[p.newAssetId] = entry;
     }
     return map;
-  } catch { return {}; }
+  } catch (error) {
+    console.warn('Lofty property metadata unavailable:', error);
+    return {};
+  }
 }
 
 /**

@@ -1,5 +1,5 @@
 import { propertyFmv, getFmvPerToken as getFmvPerTokenLocal } from '@/data/propertyFmv';
-import { fetchLpPrices } from '@/lib/loftyDeals';
+import { fetchLoftyPropertyItems, fetchLpPrices } from '@/lib/loftyDeals';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useState, useEffect } from 'react';
 import { 
@@ -29,9 +29,7 @@ async function fetchAllAssets(address) {
 }
 
 async function fetchLoftyProperties() {
-  const res = await fetch(LOFTY_API);
-  if (!res.ok) throw new Error(`LoftyAssist error: ${res.status}`);
-  return res.json();
+  return fetchLoftyPropertyItems({ includeAssistFallback: true });
 }
 
 async function fetchPortfolioAvmRows() {

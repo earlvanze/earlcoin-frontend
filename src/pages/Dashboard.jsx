@@ -175,7 +175,7 @@ import React from 'react';
 
           <motion.div variants={itemVariants} className="mt-6">
             <p className="text-xs text-muted-foreground text-center">
-              Live on-chain data — Algorand Indexer + LoftyAssist API — W1 + Treasury wallets
+              Live on-chain data — Algorand Indexer + direct Lofty APIs — W1 + Treasury wallets
               {lastUpdated && ` — Fetched ${lastUpdated.toLocaleTimeString()}`}
             </p>
           </motion.div>

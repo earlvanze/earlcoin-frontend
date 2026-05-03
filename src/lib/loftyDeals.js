@@ -1,5 +1,123 @@
-export const MARKETPLACE_API = '/api/lofty.php?source=marketplace';
+export const MARKETPLACE_API = 'https://api.lofty.ai/prod/properties/v2/marketplace';
 export const LP_MARKETPLACE_API = '/api/lofty.php?source=lp';
+
+export const LOFTY_ASSIST_API = '/api/lofty.php?source=assist';
+
+export const normalizeMarketplaceProperty = (p = {}) => ({
+  property: {
+    id: p.id || null,
+    slug: p.slug || null,
+    assetId: p.assetId || null,
+    newAssetId: p.newAssetId || null,
+    address: p.address || [p.address_line1, p.address_line2].filter(Boolean).join(', ') || 'Unknown property',
+    market: p.city || null,
+    city: p.city || null,
+    state: p.state || null,
+    tokenValue: p.liquidity?.marketPrice?.priceLow ?? p.market_price ?? p.tokenValue ?? null,
+    cap_rate: p.cap_rate ?? null,
+    coc: p.coc ?? 0,
+    monthly_rent: p.monthly_rent ?? null,
+    netOperatingIncome: p.noi ?? null,
+    totalInvestment: p.sale_price ?? p.totalInvestment ?? null,
+    tokens: p.tokens ?? null,
+    totalLoans: p.current_loan ?? 0,
+    listingStatus: p.listingStatus || (p.hideMkt ? 'Hidden' : 'Active'),
+    assetName: p.assetName || null,
+    assetUnit: p.assetUnit || null,
+    dao_app_id: p.dao_app_id || null,
+    participant_app_id: p.participant_app_id || null,
+  },
+  liquidityPool: {
+    poolId: p.liquidity?.poolId ?? null,
+    price: p.liquidity?.marketPrice?.priceLow ?? null,
+    priceLow: p.liquidity?.marketPrice?.priceLow ?? null,
+    priceHigh: p.liquidity?.marketPrice?.priceHigh ?? null,
+    apy7d: p.liquidity?.stats?.apy7d ?? {},
+    vol7d: p.liquidity?.stats?.vol7d ?? {},
+    baseStaked: p.liquidity?.baseStaked ?? null,
+    quoteStaked: p.liquidity?.quoteStaked ?? null,
+  },
+  source: 'lofty',
+});
+
+export const getMarketplaceProperties = (payload) => payload?.data?.properties || payload?.properties || [];
+
+export async function fetchLoftyMarketplaceItems() {
+  const res = await fetch(MARKETPLACE_API);
+  if (!res.ok) throw new Error(`Lofty marketplace error: ${res.status}`);
+  const payload = await res.json();
+  return getMarketplaceProperties(payload).map(normalizeMarketplaceProperty);
+}
+
+export async function fetchLoftyAssistItems() {
+  const res = await fetch(LOFTY_ASSIST_API);
+  if (!res.ok) throw new Error(`LoftyAssist error: ${res.status}`);
+  return res.json();
+}
+
+const mergeAssistIntoMarketplaceItem = (marketItem, assistItem) => {
+  if (!assistItem) return marketItem;
+  return {
+    ...assistItem,
+    property: {
+      ...(assistItem.property || {}),
+      ...(marketItem.property || {}),
+      // Prefer marketplace live token value/status but keep Assist-only fields below.
+      tokenValue: marketItem.property?.tokenValue ?? assistItem.property?.tokenValue ?? null,
+      listingStatus: marketItem.property?.listingStatus ?? assistItem.property?.listingStatus ?? null,
+    },
+    liquidityPool: {
+      ...(assistItem.liquidityPool || {}),
+      ...(marketItem.liquidityPool || {}),
+      // Preserve Assist contracts for smart-contract swap pricing.
+      apps: assistItem.liquidityPool?.apps || marketItem.liquidityPool?.apps,
+    },
+    source: 'lofty+assist',
+  };
+};
+
+export async function fetchLoftyPropertyItems({ includeAssistFallback = true } = {}) {
+  const [marketplaceResult, assistResult] = await Promise.allSettled([
+    fetchLoftyMarketplaceItems(),
+    includeAssistFallback ? fetchLoftyAssistItems() : Promise.resolve([]),
+  ]);
+
+  const marketplaceItems = marketplaceResult.status === 'fulfilled' ? marketplaceResult.value : [];
+  const assistItems = assistResult.status === 'fulfilled' ? assistResult.value : [];
+
+  if (marketplaceResult.status === 'rejected') {
+    console.warn('Direct Lofty marketplace unavailable:', marketplaceResult.reason?.message || marketplaceResult.reason);
+  }
+  if (includeAssistFallback && assistResult.status === 'rejected') {
+    console.warn('LoftyAssist fallback unavailable:', assistResult.reason?.message || assistResult.reason);
+  }
+
+  const assistByAsset = new Map();
+  for (const item of assistItems) {
+    const p = item?.property || {};
+    for (const id of [p.assetId, p.newAssetId]) {
+      if (id !== null && id !== undefined && id !== '') assistByAsset.set(Number(id), item);
+    }
+  }
+
+  const merged = [];
+  const seen = new Set();
+  for (const item of marketplaceItems) {
+    const p = item?.property || {};
+    const assistMatch = assistByAsset.get(Number(p.assetId)) || assistByAsset.get(Number(p.newAssetId));
+    merged.push(mergeAssistIntoMarketplaceItem(item, assistMatch));
+    for (const id of [p.assetId, p.newAssetId]) if (id) seen.add(Number(id));
+  }
+
+  // Keep Assist-only legacy/non-marketplace holdings as fallback rows.
+  for (const item of assistItems) {
+    const p = item?.property || {};
+    const ids = [p.assetId, p.newAssetId].filter(Boolean).map(Number);
+    if (!ids.some((id) => seen.has(id))) merged.push({ ...item, source: 'assist-fallback' });
+  }
+
+  return merged;
+}
 
 export const normalizeAddressLookupKey = (value) => {
   if (!value) return '';
