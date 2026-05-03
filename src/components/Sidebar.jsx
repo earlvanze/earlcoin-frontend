@@ -7,10 +7,10 @@ import { useAuth } from '@/contexts/SupabaseAuthContext';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/lofty-deals', icon: Bot, label: 'Lofty Deals' },
   { to: '/proposals', icon: FileText, label: 'Proposals' },
   { to: '/portfolio', icon: Briefcase, label: 'Portfolio' },
   { to: '/trade', icon: Repeat, label: 'Trade' },
-  { to: '/lofty-deals', icon: Bot, label: 'Lofty Deals' },
   { to: '/lofty-swap', icon: ArrowLeftRight, label: 'Lofty Swap' },
   { to: '/delegate', icon: Handshake, label: 'Delegate' },
 ];
