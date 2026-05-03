@@ -21,7 +21,7 @@ const LoftyAdvisorChat = ({ className }) => {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      content: 'Ask me about Lofty deals, cashflow, alpha, LP strategy, or portfolio fit. I route to the LoftyAssist MCP investment-advisor when configured.',
+      content: 'Ask me about Lofty deals, cashflow, alpha, LP strategy, or portfolio fit. I route to LoftyAssist MCP and EarlCoin deal intelligence.',
     },
   ]);
   const [input, setInput] = useState('');
@@ -42,7 +42,7 @@ const LoftyAdvisorChat = ({ className }) => {
 
     try {
       const advisorPayload = {
-        agent: 'investment-advisor',
+        agent: 'lofty-assist-intel',
         messages: buildMessagesPayload(messages, prompt),
       };
 
@@ -96,10 +96,10 @@ const LoftyAdvisorChat = ({ className }) => {
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-lg">
           <Sparkles className="h-5 w-5 text-primary" />
-          Lofty Investment Advisor
+          Lofty Assist Intel
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          Powered by LoftyAssist MCP when credentials are configured. Outputs are research support, not financial advice.
+          Powered by LoftyAssist MCP. Outputs are research support, not financial advice.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -138,7 +138,7 @@ const LoftyAdvisorChat = ({ className }) => {
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendPrompt();
             }}
-            placeholder="Ask the investment-advisor about a property, yield, alpha, risk, or portfolio allocation…"
+            placeholder="Ask Lofty Assist Intel about a property, yield, alpha, risk, or portfolio allocation…"
             className="min-h-[72px]"
           />
           <Button onClick={() => sendPrompt()} disabled={!canSend} className="self-end">

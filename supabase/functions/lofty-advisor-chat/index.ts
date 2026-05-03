@@ -172,7 +172,7 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const messages = Array.isArray(body?.messages) ? body.messages as ChatMessage[] : [];
     const prompt = buildPrompt(messages);
-    const agent = String(body?.agent || 'investment-advisor');
+    const agent = String(body?.agent || 'lofty-assist-intel');
 
     if (!prompt) return jsonResponse(400, { error: 'messages are required' });
 
@@ -204,7 +204,7 @@ Deno.serve(async (req) => {
     }
 
     const answer = await runInternalInvestmentAdvisor(prompt, sessionId);
-    return jsonResponse(200, { answer, tool: 'internal-investment-advisor', source: 'supabase-edge+mcp-tools' });
+    return jsonResponse(200, { answer, tool: 'lofty-assist-intel', source: 'supabase-edge+mcp-tools' });
   } catch (err) {
     return jsonResponse(502, { error: err instanceof Error ? err.message : String(err) });
   }

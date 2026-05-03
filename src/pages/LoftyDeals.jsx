@@ -543,6 +543,59 @@ const CashflowCard = ({ deal }) => {
     );
 };
 
+
+const buildLpStrategyFallback = (properties = []) => {
+    return properties
+        .filter((property) => property?.liquidity?.poolId && !property?.hideMkt)
+        .map((property) => {
+            const quoteApy = Number(property?.liquidity?.stats?.apy7d?.quote || 0);
+            const baseApy = Number(property?.liquidity?.stats?.apy7d?.base || 0);
+            const priceLow = Number(property?.liquidity?.marketPrice?.priceLow || 0);
+            const priceHigh = Number(property?.liquidity?.marketPrice?.priceHigh || 0);
+            const oraclePrice = Number(property?.tokenValue || property?.market_price || property?.price || 0);
+            const spread = priceLow > 0 && priceHigh > 0 ? ((priceHigh - priceLow) / priceLow) : 0;
+            const quoteReturn = quoteApy / 100;
+            const baseReturn = baseApy / 100;
+            const hybridReturn = ((quoteApy + baseApy) / 2 + spread * 100) / 100;
+            const winner = baseReturn > quoteReturn && baseReturn >= hybridReturn
+                ? 'Base LP'
+                : quoteReturn >= hybridReturn
+                    ? 'Quote LP'
+                    : 'Hybrid LP';
+            const bestReturn = Math.max(quoteReturn, baseReturn, hybridReturn);
+            const address = property.address || [property.address_line1, property.address_line2].filter(Boolean).join(', ');
+
+            return {
+                id: `live-lp-${property.assetId || property.id}`,
+                property_id: property.id || property.slug || null,
+                assetId: property.assetId || null,
+                asset_unit: property.assetUnit || null,
+                address,
+                scenario: address,
+                city: property.city || null,
+                state: property.state || null,
+                market_price: priceLow || null,
+                nav_per_token: oraclePrice || null,
+                quote_return: quoteReturn,
+                base_return: baseReturn,
+                hybrid_return: hybridReturn,
+                quote_return_pct: quoteApy,
+                base_return_pct: baseApy,
+                hybrid_return_pct: hybridReturn * 100,
+                market_oracle_ratio: oraclePrice > 0 && priceLow > 0 ? priceLow / oraclePrice : null,
+                winner,
+                recommendation: `${winner} • live 7d LP APY signal ${(bestReturn * 100).toFixed(1)}%`,
+                notes: 'Generated from live Lofty marketplace liquidity data because the Supabase LP strategy table returned no rows.',
+                proposal_draft: `## Summary\nLive LP strategy candidate for **${address}**.\n\n## Live LP Signal\n- Recommended posture: ${winner}\n- Quote APY: ${quoteApy.toFixed(1)}%\n- Base APY: ${baseApy.toFixed(1)}%\n- LP price: $${priceLow.toFixed(2)}${oraclePrice ? `\n- Oracle/NAV reference: $${oraclePrice.toFixed(2)}` : ''}\n\n## Recommendation\nUse this as a live LP shortlist candidate, subject to pool depth and order-book re-check before execution.`,
+                source: 'live-lofty-marketplace',
+            };
+        })
+        .filter((deal) => getBestStrategyReturn(deal) > 0)
+        .sort((a, b) => getBestStrategyReturn(b) - getBestStrategyReturn(a))
+        .slice(0, 20)
+        .map((deal, index) => ({ ...deal, proposal_rank: index + 1 }));
+};
+
 const LoftyDeals = () => {
     const [alphaDeals, setAlphaDeals] = useState([]);
     const [strategyData, setStrategyData] = useState([]);
@@ -580,6 +633,7 @@ const LoftyDeals = () => {
                 let cashflowRaw = [];
                 let loftyPropertyLookup = {};
                 let marketplaceIds = new Set();
+                let marketplaceProperties = [];
 
                 const [cashflowRes, marketplaceRes] = await Promise.all([
                     fetch(LOFTY_API).catch(() => null),
@@ -588,7 +642,8 @@ const LoftyDeals = () => {
 
                 if (marketplaceRes?.ok) {
                     const marketplaceRaw = await marketplaceRes.json();
-                    marketplaceIds = buildMarketplaceIdSet(marketplaceRaw?.data?.properties || []);
+                    marketplaceProperties = marketplaceRaw?.data?.properties || marketplaceRaw?.properties || [];
+                    marketplaceIds = buildMarketplaceIdSet(marketplaceProperties);
                 }
 
                 if (cashflowRes?.ok) {
@@ -670,7 +725,7 @@ const LoftyDeals = () => {
 
                 if (strategyErr) throw strategyErr;
 
-                const enrichedStrategyData = attachLoftyPropertyMeta(strategyData || [], loftyPropertyLookup)
+                const storedStrategyData = attachLoftyPropertyMeta(strategyData || [], loftyPropertyLookup)
                     .sort((a, b) => {
                         const rankA = typeof a.proposal_rank === 'number' ? a.proposal_rank : Number.POSITIVE_INFINITY;
                         const rankB = typeof b.proposal_rank === 'number' ? b.proposal_rank : Number.POSITIVE_INFINITY;
@@ -678,7 +733,11 @@ const LoftyDeals = () => {
                         return getBestStrategyReturn(b) - getBestStrategyReturn(a);
                     })
                     .slice(0, 20);
-                setStrategyData(enrichedStrategyData);
+
+                const liveStrategyFallback = storedStrategyData.length === 0
+                    ? buildLpStrategyFallback(marketplaceProperties)
+                    : [];
+                setStrategyData(storedStrategyData.length > 0 ? storedStrategyData : liveStrategyFallback);
             } catch (err) {
                 setError(err.message);
             } finally {

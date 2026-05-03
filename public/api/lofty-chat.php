@@ -19,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $input = json_decode(file_get_contents('php://input'), true);
 $messages = $input['messages'] ?? [];
-$agent = $input['agent'] ?? 'investment-advisor';
+$agent = $input['agent'] ?? 'lofty-assist-intel';
 
 if (!is_array($messages) || count($messages) === 0) {
     http_response_code(400);
@@ -140,6 +140,8 @@ try {
 
     $toolNames = [
         $agent,
+        'lofty_assist_intel',
+        'lofty-assist-intel',
         'investment_advisor',
         'investment-advisor',
         'advisor',
