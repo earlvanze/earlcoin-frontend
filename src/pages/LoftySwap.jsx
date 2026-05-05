@@ -43,18 +43,6 @@ const LOFTY_CREATORS = new Set([
 ]);
 
 const LOFTY_UNIT_PREFIXES = ['LFTY'];
-const LOFTY_NAME_PATTERNS = [/\bLOFTY\b/i, /LOFTY\s+(PROPERTY|AI|TOKEN)/i];
-
-function isLikelyLoftyToken(holding) {
-  if (!holding) return false;
-  const unitName = (holding.unitName || '').toUpperCase();
-  const name = holding.name || '';
-  return Boolean(
-    holding.isLoftyCreator
-    || LOFTY_UNIT_PREFIXES.some(p => unitName.startsWith(p))
-    || LOFTY_NAME_PATTERNS.some((pattern) => pattern.test(name))
-  );
-}
 
 function isLpToken(unitName, name) {
   const u = (unitName || '').toUpperCase();
@@ -140,8 +128,9 @@ async function fetchLoftyAssistProperties() {
         // Admin app ID stores oracle + k params
         adminAppId: getLoftyContractId(lp, 'admin')
       };
-      if (p.assetId) map[p.assetId] = entry;
-      if (p.newAssetId) map[p.newAssetId] = entry;
+      for (const id of [p.assetId, p.newAssetId, p.legacyAssetId, p.migratedAssetId, ...(Array.isArray(p.assetIds) ? p.assetIds : [])]) {
+        if (id !== null && id !== undefined && id !== '') map[Number(id)] = entry;
+      }
     }
     return map;
   } catch (error) {
@@ -286,21 +275,13 @@ const LoftySwap = () => {
         // SECURITY #1: Filter out LP pool tokens
         let filtered = rawHoldings.filter(h => !isLpToken(h.unitName, h.name));
 
-        // Prefer the live LoftyAssist asset allowlist when it matches wallet assets,
-        // but do not let a stale/incomplete allowlist blank a user's wallet. Some legacy
-        // or migrated Lofty ASAs may be absent from the current marketplace payload while
-        // still carrying Lofty creator/unit/name metadata.
-        const metadataFiltered = filtered.filter(h => isLikelyLoftyToken(h));
+        // Prefer the live LoftyAssist asset allowlist. It includes both sides of
+        // Lofty's 2026-04-28 migration: legacy ASAs and migrated ASAs.
+        // If LoftyAssist is temporarily unavailable, fall back to metadata checks.
         if (Object.keys(meta).length > 0) {
-          const allowlisted = filtered.filter(h => meta[h.assetId]);
-          const seen = new Set();
-          filtered = [...allowlisted, ...metadataFiltered].filter((h) => {
-            if (seen.has(h.assetId)) return false;
-            seen.add(h.assetId);
-            return true;
-          });
+          filtered = filtered.filter(h => meta[h.assetId]);
         } else {
-          filtered = metadataFiltered;
+          filtered = filtered.filter(h => h.isLoftyCreator || h.isLoftyUnit);
         }
 
         // Fetch app's opt-in status for ASA readiness check

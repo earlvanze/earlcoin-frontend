@@ -57,14 +57,31 @@ export async function fetchLoftyAssistItems() {
 
 const mergeAssistIntoMarketplaceItem = (marketItem, assistItem) => {
   if (!assistItem) return marketItem;
+
+  const marketProperty = marketItem.property || {};
+  const assistProperty = assistItem.property || {};
+  const assetIds = [...new Set([
+    assistProperty.assetId,
+    assistProperty.newAssetId,
+    marketProperty.assetId,
+    marketProperty.newAssetId,
+  ].filter((id) => id !== null && id !== undefined && id !== '').map(Number))];
+
   return {
     ...assistItem,
     property: {
-      ...(assistItem.property || {}),
-      ...(marketItem.property || {}),
+      ...assistProperty,
+      ...marketProperty,
+      // Preserve both sides of Lofty's 2026-04-28 migration. Marketplace often exposes
+      // only the migrated ASA while LoftyAssist may still carry legacy + migrated IDs.
+      assetId: marketProperty.assetId ?? assistProperty.assetId ?? null,
+      newAssetId: marketProperty.newAssetId ?? assistProperty.newAssetId ?? null,
+      legacyAssetId: assistProperty.assetId ?? null,
+      migratedAssetId: marketProperty.assetId ?? assistProperty.newAssetId ?? null,
+      assetIds,
       // Prefer marketplace live token value/status but keep Assist-only fields below.
-      tokenValue: marketItem.property?.tokenValue ?? assistItem.property?.tokenValue ?? null,
-      listingStatus: marketItem.property?.listingStatus ?? assistItem.property?.listingStatus ?? null,
+      tokenValue: marketProperty.tokenValue ?? assistProperty.tokenValue ?? null,
+      listingStatus: marketProperty.listingStatus ?? assistProperty.listingStatus ?? null,
     },
     liquidityPool: {
       ...(assistItem.liquidityPool || {}),
