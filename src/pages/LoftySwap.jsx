@@ -43,6 +43,18 @@ const LOFTY_CREATORS = new Set([
 ]);
 
 const LOFTY_UNIT_PREFIXES = ['LFTY'];
+const LOFTY_NAME_PATTERNS = [/\bLOFTY\b/i, /LOFTY\s+(PROPERTY|AI|TOKEN)/i];
+
+function isLikelyLoftyToken(holding) {
+  if (!holding) return false;
+  const unitName = (holding.unitName || '').toUpperCase();
+  const name = holding.name || '';
+  return Boolean(
+    holding.isLoftyCreator
+    || LOFTY_UNIT_PREFIXES.some(p => unitName.startsWith(p))
+    || LOFTY_NAME_PATTERNS.some((pattern) => pattern.test(name))
+  );
+}
 
 function isLpToken(unitName, name) {
   const u = (unitName || '').toUpperCase();
@@ -274,13 +286,21 @@ const LoftySwap = () => {
         // SECURITY #1: Filter out LP pool tokens
         let filtered = rawHoldings.filter(h => !isLpToken(h.unitName, h.name));
 
-        // Prefer the live LoftyAssist asset allowlist. Lofty token metadata can change
-        // across migrations, so do not rely solely on creator/unit-name heuristics.
-        // If LoftyAssist is temporarily unavailable, fall back to the metadata checks.
+        // Prefer the live LoftyAssist asset allowlist when it matches wallet assets,
+        // but do not let a stale/incomplete allowlist blank a user's wallet. Some legacy
+        // or migrated Lofty ASAs may be absent from the current marketplace payload while
+        // still carrying Lofty creator/unit/name metadata.
+        const metadataFiltered = filtered.filter(h => isLikelyLoftyToken(h));
         if (Object.keys(meta).length > 0) {
-          filtered = filtered.filter(h => meta[h.assetId]);
+          const allowlisted = filtered.filter(h => meta[h.assetId]);
+          const seen = new Set();
+          filtered = [...allowlisted, ...metadataFiltered].filter((h) => {
+            if (seen.has(h.assetId)) return false;
+            seen.add(h.assetId);
+            return true;
+          });
         } else {
-          filtered = filtered.filter(h => h.isLoftyCreator || h.isLoftyUnit);
+          filtered = metadataFiltered;
         }
 
         // Fetch app's opt-in status for ASA readiness check
