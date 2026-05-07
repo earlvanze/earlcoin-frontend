@@ -68,6 +68,12 @@ export const AppProvider = ({ children }) => {
             try {
                 const assetId = await getVnftAssetId(accountAddress);
                 nextHasVerificationNft = !!assetId;
+                // A wallet holding an EarlCoin Verification NFT has already completed
+                // verification. Treat it as KYC-ready even if the current Supabase
+                // session/profile has not caught up yet.
+                if (assetId) {
+                    nextKycVerified = true;
+                }
                 if (assetId && user?.id) {
                     localStorage.setItem(`vnft_asset_id_${user.id}`, String(assetId));
                 }
