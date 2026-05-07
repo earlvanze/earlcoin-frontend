@@ -298,12 +298,15 @@ const LoftySwap = () => {
           seen.add(h.assetId);
           return true;
         });
+        const rejected = rawHoldings.filter(h => !isLpToken(h.unitName, h.name)).filter(h => !filtered.some(f => f.assetId === h.assetId));
         console.info('LoftySwap holdings filter', {
           raw: rawHoldings.length,
           nonLp: rawHoldings.filter(h => !isLpToken(h.unitName, h.name)).length,
           allowlisted: allowlisted.length,
           metadata: metadataFiltered.length,
           final: filtered.length,
+          rejectedIds: rejected.map(h => h.assetId),
+          rejectedUnits: rejected.map(h => h.unitName),
         });
 
         // Fetch app's opt-in status for ASA readiness check
