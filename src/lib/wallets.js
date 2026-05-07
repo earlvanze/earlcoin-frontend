@@ -1,3 +1,4 @@
+import { INDEXER_URL } from './config';
 const custodyHotAddress = import.meta.env.VITE_CUSTODY_HOT_ADDRESS || 'EQVAIIFMQCDUWXPGXMDPMBZE4EDK667OTOPYMVJOKFUYSQ6BT2NGSIQOZU';
 
 // Tracked wallet addresses
@@ -30,5 +31,5 @@ export const SOLAR_EQUITY_SHARES = 80;
 export const SOLAR_ESCROW_SHARES = 1920;
 export const SOLAR_LOAN_BALANCE = 96000;
 
-export const INDEXER_BASE = 'https://mainnet-idx.4160.nodely.dev';
+export const INDEXER_BASE = INDEXER_URL;
 export const LOFTY_API = '/api/lofty.php';

@@ -94,7 +94,7 @@ async function fetchLoftyHoldings(walletAddress) {
             decimals: params.decimals || 0,
             name: params.name || `ASA ${asset['asset-id']}`,
             unitName: params['unit-name'] || '',
-            defaultFrozen: params['default-frozen'] || false,
+            defaultFrozen: asset['is-frozen'] ?? params['default-frozen'] ?? false,
             total: params.total || 0,
             isLoftyCreator,
             isLoftyUnit,
@@ -260,7 +260,7 @@ const HoldingRow = ({ holding, selected, onToggle, disabled, reason, lpPrice, pr
 const LoftySwap = () => {
   const { toast } = useToast();
   const { user } = useAuth();
-  const { isConnected, accountAddress, handleConnect, peraWallet, kycVerified } = useAppContext();
+  const { isConnected, accountAddress, handleConnect, peraWallet, kycVerified, hasVerificationNft } = useAppContext();
 
   const [holdings, setHoldings] = useState([]);
   const [lpPrices, setLpPrices] = useState({});
@@ -398,7 +398,7 @@ const LoftySwap = () => {
     return { totalUsdValue: usd, totalEarl: earl, selectedHoldings: sel };
   }, [holdingsWithStatus, selectedIds]);
 
-  const canSwap = selectedHoldings.length > 0 && totalEarl > 0 && !submitting && kycVerified;
+  const canSwap = selectedHoldings.length > 0 && totalEarl > 0 && !submitting && kycVerified && hasVerificationNft;
 
   /**
    * Atomic swap using the in-kind exchange smart contract.
@@ -411,6 +411,7 @@ const LoftySwap = () => {
    */
   const handleSwap = async () => {
     if (!kycVerified) { toast({ variant: 'destructive', title: 'KYC required' }); return; }
+    if (!hasVerificationNft) { toast({ variant: 'destructive', title: 'Verification NFT required', description: 'Your connected wallet must hold the EarlCoin verification NFT before the on-chain swap can pass contract checks.' }); return; }
     if (!canSwap) { toast({ variant: 'destructive', title: 'Select tokens with price data' }); return; }
 
     // Re-verify no disabled tokens
@@ -423,6 +424,12 @@ const LoftySwap = () => {
     setSubmitting(true);
 
     try {
+      const accountInfo = await algodClient.accountInformation(accountAddress).do();
+      const earlOptedIn = (accountInfo.assets || []).some((asset) => asset['asset-id'] === EARL_ASA_ID);
+      if (!earlOptedIn) {
+        throw new Error('Your wallet is not opted into EARL yet. Opt into the EARL ASA first, then retry the Lofty swap.');
+      }
+
       if (appId && appId > 0) {
         // ═══════════════════════════════════════════════
         // SMART CONTRACT PATH: Atomic trustless swap
@@ -482,7 +489,7 @@ const LoftySwap = () => {
       }
 
       setSelectedIds(new Set());
-      setHoldings(await fetchLoftyHoldings(accountAddress));
+      setHoldings((current) => current.filter((holding) => !selectedIds.has(holding.assetId)));
     } catch (err) {
       console.error('Lofty swap failed:', err);
       const msg = err?.message || String(err);
@@ -534,21 +541,21 @@ const LoftySwap = () => {
         </motion.div>
       )}
 
-      {isConnected && !kycVerified && (
+      {isConnected && (!kycVerified || !hasVerificationNft) && (
         <motion.div variants={itemVariants} className="mb-6">
           <Card className="border-yellow-500/30 bg-yellow-500/5">
             <CardContent className="py-4 flex items-start gap-3">
               <AlertTriangle className="h-5 w-5 text-yellow-400 mt-0.5" />
               <div>
-                <p className="font-medium">KYC verification required</p>
-                <p className="text-sm text-muted-foreground">Complete identity verification before swapping Lofty tokens for EARL.</p>
+                <p className="font-medium">KYC and verification NFT required</p>
+                <p className="text-sm text-muted-foreground">Complete identity verification and hold the EarlCoin verification NFT in this wallet before swapping Lofty tokens for EARL.</p>
               </div>
             </CardContent>
           </Card>
         </motion.div>
       )}
 
-      {isConnected && scanDebug && (scanDebug.error || scanDebug.final === 0 || new URLSearchParams(window.location.search).has('debug')) && (
+      {isConnected && scanDebug && (import.meta.env.DEV || new URLSearchParams(window.location.search).has('debug')) && (
         <motion.div variants={itemVariants} className="mb-6">
           <Card className="border-blue-500/30 bg-blue-500/5">
             <CardContent className="py-4 text-xs space-y-1">
