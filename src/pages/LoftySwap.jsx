@@ -67,7 +67,7 @@ async function fetchLoftyHoldings(walletAddress) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Indexer error: ${res.status}`);
   const data = await res.json();
-  const assets = (data.assets || []).filter((a) => a.amount > 0);
+  const assets = (data.account?.assets || data.assets || []).filter((a) => Number(a.amount) > 0);
   if (assets.length === 0) return [];
 
   // Batch asset lookups — use account response which already includes creator info
