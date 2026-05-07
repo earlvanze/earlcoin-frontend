@@ -270,11 +270,12 @@ const LoftySwap = () => {
   const [submitting, setSubmitting] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [searchFilter, setSearchFilter] = useState('');
+  const [scanDebug, setScanDebug] = useState(null);
 
   const appId = INKIND_EXCHANGE_APP_ID;
 
   useEffect(() => {
-    if (!isConnected || !accountAddress) { setHoldings([]); return; }
+    if (!isConnected || !accountAddress) { setHoldings([]); setScanDebug(null); return; }
     const load = async () => {
       setLoading(true);
       try {
@@ -299,7 +300,9 @@ const LoftySwap = () => {
           return true;
         });
         const rejected = rawHoldings.filter(h => !isLpToken(h.unitName, h.name)).filter(h => !filtered.some(f => f.assetId === h.assetId));
-        console.info('LoftySwap holdings filter', {
+        const networkDebug = { NETWORK: import.meta.env.VITE_NETWORK, indexerUrl: import.meta.env.VITE_INDEXER_URL || INDEXER_BASE, algodUrl: import.meta.env.VITE_ALGOD_URL };
+        const holdingsDebug = {
+          accountAddress,
           raw: rawHoldings.length,
           nonLp: rawHoldings.filter(h => !isLpToken(h.unitName, h.name)).length,
           allowlisted: allowlisted.length,
@@ -307,11 +310,10 @@ const LoftySwap = () => {
           final: filtered.length,
           rejectedIds: rejected.map(h => h.assetId),
           rejectedUnits: rejected.map(h => h.unitName),
-        });
-
-        console.info('LoftySwap network context', { NETWORK: import.meta.env.VITE_NETWORK, indexer: window.__vite_plugin_reporter_url__, algodUrl: import.meta.env.VITE_ALGOD_URL });
-        console.info('LoftySwap network context', { NETWORK: import.meta.env.VITE_NETWORK, indexerUrl: import.meta.env.VITE_INDEXER_URL, algodUrl: import.meta.env.VITE_ALGOD_URL });
-        console.info('LoftySwap network context', { NETWORK: import.meta.env.VITE_NETWORK, indexerUrl: import.meta.env.VITE_INDEXER_URL, algodUrl: import.meta.env.VITE_ALGOD_URL });
+          acceptedIds: filtered.map(h => h.assetId),
+        };
+        console.info('LoftySwap network context', networkDebug);
+        console.info('LoftySwap holdings filter', holdingsDebug);
         // Fetch app's opt-in status for ASA readiness check
         let optedIn = new Set();
         if (appId && appId > 0) {
@@ -326,7 +328,9 @@ const LoftySwap = () => {
         setHoldings(filtered);
         setLpPrices(prices);
         setPropertyMap(meta);
+        setScanDebug({ ...networkDebug, ...holdingsDebug, appOptedInCount: optedIn.size });
       } catch (err) {
+        setScanDebug({ accountAddress, error: err?.message || String(err), NETWORK: import.meta.env.VITE_NETWORK, indexerUrl: import.meta.env.VITE_INDEXER_URL || INDEXER_BASE, algodUrl: import.meta.env.VITE_ALGOD_URL });
         toast({ variant: 'destructive', title: 'Load failed', description: err.message });
       } finally { setLoading(false); }
     };
@@ -539,6 +543,27 @@ const LoftySwap = () => {
                 <p className="font-medium">KYC verification required</p>
                 <p className="text-sm text-muted-foreground">Complete identity verification before swapping Lofty tokens for EARL.</p>
               </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
+      {isConnected && scanDebug && (scanDebug.error || scanDebug.final === 0 || new URLSearchParams(window.location.search).has('debug')) && (
+        <motion.div variants={itemVariants} className="mb-6">
+          <Card className="border-blue-500/30 bg-blue-500/5">
+            <CardContent className="py-4 text-xs space-y-1">
+              <p className="font-medium text-blue-300">LoftySwap debug</p>
+              <p className="font-mono break-all">wallet: {scanDebug.accountAddress || 'none'}</p>
+              <p>network: {scanDebug.NETWORK || 'mainnet'}</p>
+              <p className="font-mono break-all">indexer: {scanDebug.indexerUrl || 'default'}</p>
+              {scanDebug.error ? (
+                <p className="text-red-300">error: {scanDebug.error}</p>
+              ) : (
+                <p>raw: {scanDebug.raw} · nonLP: {scanDebug.nonLp} · allowlisted: {scanDebug.allowlisted} · metadata: {scanDebug.metadata} · final: {scanDebug.final} · app opted: {scanDebug.appOptedInCount}</p>
+              )}
+              {Array.isArray(scanDebug.rejectedIds) && scanDebug.rejectedIds.length > 0 && (
+                <p className="font-mono break-all">rejected: {scanDebug.rejectedIds.join(', ')}</p>
+              )}
             </CardContent>
           </Card>
         </motion.div>
