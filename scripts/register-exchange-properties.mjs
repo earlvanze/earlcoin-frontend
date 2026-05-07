@@ -6,7 +6,7 @@
  *   --portfolio    Register all W1 + Treasury properties that have LP pools
  *   --criteria     Register properties matching investment criteria (>30% alpha + cashflow, or >9% T-12 yield)
  *   --asa <id>     Register a single ASA
- *   --all-assist   Register every LoftyAssist assetId + newAssetId with LP contracts
+ *   --lofty-deals  Register ASAs represented by the current /lofty-deals shortlists
  *   --dry-run      Show what would be registered without executing
  *
  * Requires: GOV_ADMIN_MNEMONIC in environment
@@ -14,6 +14,21 @@
  */
 
 import algosdk from 'algosdk';
+import { createClient } from '@supabase/supabase-js';
+import fs from 'fs';
+
+function loadDotEnv(path) {
+  if (!fs.existsSync(path)) return;
+  for (const line of fs.readFileSync(path, 'utf8').split(/\r?\n/)) {
+    if (!line || line.trim().startsWith('#') || !line.includes('=')) continue;
+    const i = line.indexOf('=');
+    const key = line.slice(0, i).trim();
+    const value = line.slice(i + 1).trim().replace(/^['\"]|['\"]$/g, '');
+    if (!process.env[key]) process.env[key] = value;
+  }
+}
+
+loadDotEnv('.env.local');
 
 const ALGOD_URL = process.env.ALGOD_URL || 'https://mainnet-api.4160.nodely.dev';
 const APP_ID = Number(process.env.INKIND_EXCHANGE_APP_ID || '3518922796');
@@ -32,7 +47,7 @@ const appAddr = algosdk.getApplicationAddress(APP_ID);
 
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
-const mode = args.includes('--all-assist') ? 'all-assist' : args.includes('--portfolio') ? 'portfolio' : args.includes('--criteria') ? 'criteria' : args.includes('--asa') ? 'single' : 'portfolio';
+const mode = args.includes('--lofty-deals') ? 'lofty-deals' : args.includes('--portfolio') ? 'portfolio' : args.includes('--criteria') ? 'criteria' : args.includes('--asa') ? 'single' : 'portfolio';
 
 async function fetchLpPools() {
   const res = await fetch(LP_API, { headers: { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36' } });
@@ -54,41 +69,121 @@ async function fetchLpPools() {
 }
 
 
-async function getAllAssistTargets() {
-  const res = await fetch(LOFTYASSIST_API);
-  const data = await res.json();
-  const map = new Map();
-  for (const item of data) {
-    const p = item.property || {};
-    const lp = item.liquidityPool || {};
-    const contracts = lp?.apps?.contracts || lp?.contracts || {};
-    const admin = contracts.admin || lp.adminAppId;
-    const lpi = contracts.lpInterface || lp.lpInterfaceAppId;
-    if (!admin || !lpi) continue;
-    for (const asaId of [p.assetId, p.newAssetId].filter(Boolean).map(Number)) {
-      if (!map.has(asaId)) {
-        map.set(asaId, {
-          asaId,
-          admin,
-          lp: lpi,
-          name: p.address || p.slug || '?',
-          price: lp.price || lp.priceLow || p.tokenValue || null,
-        });
-      }
-    }
+const normalizeAddressLookupKey = (value) => {
+  if (!value) return '';
+  const [street = '', city = ''] = String(value).split(',').map((part) => part.trim()).slice(0, 2);
+  return `${street} ${city}`.toLowerCase().replace(/\./g, '').replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+};
+
+function buildAssistLookup(items) {
+  const byAddressKey = {};
+  const byAssetId = {};
+  for (const item of items) {
+    const prop = item.property || {};
+    const contracts = item.liquidityPool?.apps?.contracts || item.liquidityPool?.contracts || {};
+    const meta = {
+      property_id: prop.id || prop.slug || null,
+      slug: prop.slug || null,
+      address: prop.address || null,
+      city: prop.market || prop.city || null,
+      state: prop.state || null,
+      assetId: prop.assetId || null,
+      newAssetId: prop.newAssetId || null,
+      listingStatus: prop.listingStatus || null,
+      coc: typeof prop.coc === 'number' ? prop.coc / 100 : 0,
+      tokenValue: prop.tokenValue ?? null,
+      contracts,
+      price: item.liquidityPool?.price || item.liquidityPool?.priceLow || prop.tokenValue || null,
+    };
+    const key = normalizeAddressLookupKey(prop.address);
+    if (key) byAddressKey[key] = meta;
+    for (const id of [prop.assetId, prop.newAssetId].filter(Boolean)) byAssetId[Number(id)] = meta;
   }
-  return map;
+  return { byAddressKey, byAssetId };
 }
 
-async function hasAcceptedBox(asaId) {
-  try {
-    await algod.getApplicationBoxByName(APP_ID, algosdk.encodeUint64(asaId)).do();
-    return true;
-  } catch (e) {
-    const msg = e?.message || String(e);
-    if (msg.includes('box not found') || msg.includes('404')) return false;
-    return false;
+function buildMarketplaceIdSet(properties) {
+  const ids = new Set();
+  for (const prop of properties || []) for (const id of [prop.assetId, prop.newAssetId].filter(Boolean)) ids.add(String(id));
+  return ids;
+}
+
+function attachAssistMeta(item, lookup) {
+  if (item.assetId && lookup.byAssetId[Number(item.assetId)]) return { ...item, ...lookup.byAssetId[Number(item.assetId)] };
+  const match = lookup.byAddressKey[normalizeAddressLookupKey(item.address || item.scenario || '')];
+  return match ? { ...item, ...match } : item;
+}
+
+function isMarketplaceTradable(deal, marketplaceIds) {
+  return [deal.assetId, deal.newAssetId]
+    .filter((id) => id !== null && id !== undefined && id !== '')
+    .map(String)
+    .some((id) => marketplaceIds.has(id));
+}
+
+function getBestStrategyReturn(deal) {
+  return Math.max(deal.quote_return || Number.NEGATIVE_INFINITY, deal.base_return || Number.NEGATIVE_INFINITY, deal.hybrid_return || Number.NEGATIVE_INFINITY);
+}
+
+function addDealTarget(targets, deal, source, lookup) {
+  const meta = lookup.byAssetId[Number(deal.assetId)] || lookup.byAssetId[Number(deal.newAssetId)] || lookup.byAddressKey[normalizeAddressLookupKey(deal.address || deal.scenario || '')] || deal;
+  const contracts = meta.contracts || {};
+  const admin = contracts.admin || meta.admin;
+  const lp = contracts.lpInterface || meta.lp;
+  if (!admin || !lp) return;
+  for (const asaId of [meta.assetId, meta.newAssetId, deal.assetId, deal.newAssetId].filter(Boolean).map(Number)) {
+    if (!targets.has(asaId)) targets.set(asaId, { asaId, admin, lp, name: meta.address || deal.address || deal.scenario || '?', price: meta.price || meta.tokenValue || deal.market_price || null, source });
   }
+}
+
+async function getLoftyDealsTargets() {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL;
+  const supabaseKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseKey) throw new Error('VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY are required for --lofty-deals');
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
+  const [{ data: alphaRows, error: alphaErr }, assistItems, marketplaceRaw] = await Promise.all([
+    supabase.from('lofty_alpha_opportunities').select('*'),
+    fetch(LOFTYASSIST_API).then((r) => r.json()),
+    fetch('https://api.lofty.ai/prod/properties/v2/marketplace').then((r) => r.json()),
+  ]);
+  if (alphaErr) throw alphaErr;
+
+  const lookup = buildAssistLookup(assistItems || []);
+  const marketplaceProperties = marketplaceRaw?.data?.properties || marketplaceRaw?.properties || [];
+  const marketplaceIds = buildMarketplaceIdSet(marketplaceProperties);
+  const targets = new Map();
+
+  const alphaDeals = (alphaRows || []).map((row) => attachAssistMeta(row, lookup)).filter((deal) => isMarketplaceTradable(deal, marketplaceIds)).sort((a, b) => {
+    const rankA = typeof a.proposal_rank === 'number' ? a.proposal_rank : Number.POSITIVE_INFINITY;
+    const rankB = typeof b.proposal_rank === 'number' ? b.proposal_rank : Number.POSITIVE_INFINITY;
+    if (rankA !== rankB) return rankA - rankB;
+    const navA = typeof a.nav_per_token === 'number' ? a.nav_per_token : 0;
+    const navB = typeof b.nav_per_token === 'number' ? b.nav_per_token : 0;
+    const marketA = typeof a.market_price === 'number' ? a.market_price : (typeof a.tokenValue === 'number' ? a.tokenValue : 0);
+    const marketB = typeof b.market_price === 'number' ? b.market_price : (typeof b.tokenValue === 'number' ? b.tokenValue : 0);
+    const alphaA = marketA > 0 ? ((navA - marketA) / marketA) : Number.NEGATIVE_INFINITY;
+    const alphaB = marketB > 0 ? ((navB - marketB) / marketB) : Number.NEGATIVE_INFINITY;
+    return alphaB - alphaA;
+  }).slice(0, 20);
+  alphaDeals.forEach((deal) => addDealTarget(targets, deal, 'alpha', lookup));
+
+  const cashflowDeals = (assistItems || []).map((item) => {
+    const prop = item.property || {};
+    return { property_id: prop.id || prop.slug || prop.assetId, assetId: prop.assetId || null, newAssetId: prop.newAssetId || null, address: prop.address || 'Unknown property', city: prop.market || prop.city || null, state: prop.state || null, market_price: prop.tokenValue ?? null, coc: typeof prop.coc === 'number' ? prop.coc / 100 : 0, listingStatus: prop.listingStatus || null };
+  }).filter((deal) => deal.listingStatus === 'Active' && isMarketplaceTradable(deal, marketplaceIds)).filter((deal) => typeof deal.coc === 'number' && deal.coc > 0).sort((a, b) => (b.coc || 0) - (a.coc || 0)).slice(0, 20);
+  cashflowDeals.forEach((deal) => addDealTarget(targets, deal, 'cashflow', lookup));
+
+  const strategyDeals = marketplaceProperties.map((prop) => {
+    const priceLow = Number(prop.liquidity?.marketPrice?.priceLow || 0);
+    const quoteReturn = Number(prop.liquidity?.stats?.apy7d?.quote || 0) / 100;
+    const baseReturn = Number(prop.liquidity?.stats?.apy7d?.base || 0) / 100;
+    return { assetId: prop.assetId || null, newAssetId: prop.newAssetId || null, address: prop.address || [prop.address_line1, prop.address_line2].filter(Boolean).join(', '), market_price: priceLow || null, quote_return: quoteReturn, base_return: baseReturn, hybrid_return: (quoteReturn + baseReturn) / 2 };
+  }).filter((deal) => getBestStrategyReturn(deal) > 0).sort((a, b) => getBestStrategyReturn(b) - getBestStrategyReturn(a)).slice(0, 20);
+  strategyDeals.forEach((deal) => addDealTarget(targets, deal, 'strategy', lookup));
+
+  console.log(`LoftyDeals shortlist rows: alpha=${alphaDeals.length} cashflow=${cashflowDeals.length} strategy=${strategyDeals.length}`);
+  return targets;
 }
 
 async function getPortfolioAsas() {
@@ -128,6 +223,17 @@ async function getCriteriaAsas(poolMap) {
 async function getRegisteredAsas() {
   const info = await algod.accountInformation(appAddr).do();
   return new Set((info.assets || []).map(a => a['asset-id']));
+}
+
+async function hasAcceptedBox(asaId) {
+  try {
+    await algod.getApplicationBoxByName(APP_ID, algosdk.encodeUint64(asaId)).do();
+    return true;
+  } catch (e) {
+    const msg = e?.message || String(e);
+    if (msg.includes('box not found') || msg.includes('404')) return false;
+    return false;
+  }
 }
 
 async function registerAsa(asaId, admin, lp, { accepted = false, opted = false } = {}) {
@@ -188,8 +294,8 @@ async function main() {
 
   let targetAsas;
   let explicitTargets = null;
-  if (mode === 'all-assist') {
-    explicitTargets = await getAllAssistTargets();
+  if (mode === 'lofty-deals') {
+    explicitTargets = await getLoftyDealsTargets();
     targetAsas = new Set(explicitTargets.keys());
   } else if (mode === 'single') {
     const asaId = Number(args[args.indexOf('--asa') + 1]);
