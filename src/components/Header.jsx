@@ -77,19 +77,23 @@ import React from 'react';
                     <SettingsIcon className="mr-2 h-4 w-4" />
                     <span>Settings</span>
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    {isConnected && accountAddress ? (
-                      <div className="flex items-center cursor-default">
+                  {isConnected && accountAddress ? (
+                    <>
+                      <DropdownMenuItem className="cursor-default" onSelect={(event) => event.preventDefault()}>
                         <Wallet className="mr-2 h-4 w-4" />
-                        <span className="font-mono text-xs">{accountAddress.slice(0, 4)}...{accountAddress.slice(-4)}</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center cursor-pointer" onClick={handleConnect}>
-                        <Wallet className="mr-2 h-4 w-4" />
-                        <span>Connect Wallet</span>
-                      </div>
-                    )}
-                  </DropdownMenuItem>
+                        <span className="font-mono text-xs">{accountAddress.slice(0, 6)}...{accountAddress.slice(-4)}</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleDisconnect}>
+                        <LogOut className="mr-2 h-4 w-4" />
+                        <span>Disconnect Wallet</span>
+                      </DropdownMenuItem>
+                    </>
+                  ) : (
+                    <DropdownMenuItem onClick={handleConnect}>
+                      <Wallet className="mr-2 h-4 w-4" />
+                      <span>Connect Wallet</span>
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={signOut}>
                     <LogOut className="mr-2 h-4 w-4" />
@@ -100,9 +104,9 @@ import React from 'react';
             ) : (
               <>
                 {isConnected && accountAddress ? (
-                  <Button variant="outline" size="sm" className="hidden md:flex gap-2">
+                  <Button onClick={handleDisconnect} title="Disconnect wallet" variant="outline" size="sm" className="hidden md:flex gap-2">
                     <Wallet className="h-4 w-4" />
-                    <span className="font-mono text-xs">{accountAddress.slice(0, 4)}...{accountAddress.slice(-4)}</span>
+                    <span className="font-mono text-xs">{accountAddress.slice(0, 6)}...{accountAddress.slice(-4)}</span>
                   </Button>
                 ) : (
                   <Button onClick={handleConnect} variant="outline" size="sm" className="hidden md:flex">
