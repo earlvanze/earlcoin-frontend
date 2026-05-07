@@ -6,6 +6,7 @@
  *   --portfolio    Register all W1 + Treasury properties that have LP pools
  *   --criteria     Register properties matching investment criteria (>30% alpha + cashflow, or >9% T-12 yield)
  *   --asa <id>     Register a single ASA
+ *   --all-assist   Register every LoftyAssist assetId + newAssetId with LP contracts
  *   --dry-run      Show what would be registered without executing
  *
  * Requires: GOV_ADMIN_MNEMONIC in environment
@@ -31,7 +32,7 @@ const appAddr = algosdk.getApplicationAddress(APP_ID);
 
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
-const mode = args.includes('--portfolio') ? 'portfolio' : args.includes('--criteria') ? 'criteria' : args.includes('--asa') ? 'single' : 'portfolio';
+const mode = args.includes('--all-assist') ? 'all-assist' : args.includes('--portfolio') ? 'portfolio' : args.includes('--criteria') ? 'criteria' : args.includes('--asa') ? 'single' : 'portfolio';
 
 async function fetchLpPools() {
   const res = await fetch(LP_API, { headers: { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36' } });
@@ -50,6 +51,44 @@ async function fetchLpPools() {
     }
   }
   return map;
+}
+
+
+async function getAllAssistTargets() {
+  const res = await fetch(LOFTYASSIST_API);
+  const data = await res.json();
+  const map = new Map();
+  for (const item of data) {
+    const p = item.property || {};
+    const lp = item.liquidityPool || {};
+    const contracts = lp?.apps?.contracts || lp?.contracts || {};
+    const admin = contracts.admin || lp.adminAppId;
+    const lpi = contracts.lpInterface || lp.lpInterfaceAppId;
+    if (!admin || !lpi) continue;
+    for (const asaId of [p.assetId, p.newAssetId].filter(Boolean).map(Number)) {
+      if (!map.has(asaId)) {
+        map.set(asaId, {
+          asaId,
+          admin,
+          lp: lpi,
+          name: p.address || p.slug || '?',
+          price: lp.price || lp.priceLow || p.tokenValue || null,
+        });
+      }
+    }
+  }
+  return map;
+}
+
+async function hasAcceptedBox(asaId) {
+  try {
+    await algod.getApplicationBoxByName(APP_ID, algosdk.encodeUint64(asaId)).do();
+    return true;
+  } catch (e) {
+    const msg = e?.message || String(e);
+    if (msg.includes('box not found') || msg.includes('404')) return false;
+    return false;
+  }
 }
 
 async function getPortfolioAsas() {
@@ -91,39 +130,51 @@ async function getRegisteredAsas() {
   return new Set((info.assets || []).map(a => a['asset-id']));
 }
 
-async function registerAsa(asaId, admin, lp) {
-  const p = await algod.getTransactionParams().do();
-  const p2 = await algod.getTransactionParams().do();
-  p2.fee = 2000;
-  p2.flatFee = true;
+async function registerAsa(asaId, admin, lp, { accepted = false, opted = false } = {}) {
+  if (accepted && opted) return 'already';
 
-  const mbrTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
-    from: deployerAddr, to: appAddr, amount: 106100, suggestedParams: p,
-  });
-  const acceptTxn = algosdk.makeApplicationCallTxnFromObject({
-    from: deployerAddr, appIndex: APP_ID,
-    appArgs: [
-      new TextEncoder().encode('accept_asa'),
-      algosdk.encodeUint64(asaId),
-      algosdk.encodeUint64(admin),
-      algosdk.encodeUint64(lp),
-    ],
-    boxes: [{ appIndex: APP_ID, name: algosdk.encodeUint64(asaId) }],
-    suggestedParams: p,
-  });
-  const optTxn = algosdk.makeApplicationCallTxnFromObject({
-    from: deployerAddr, appIndex: APP_ID,
-    appArgs: [new TextEncoder().encode('admin_optin'), algosdk.encodeUint64(asaId)],
-    foreignAssets: [asaId],
-    suggestedParams: p2,
-  });
-  algosdk.assignGroupID([mbrTxn, acceptTxn, optTxn]);
-  await algod.sendRawTransaction([
-    mbrTxn.signTxn(deployer.sk),
-    acceptTxn.signTxn(deployer.sk),
-    optTxn.signTxn(deployer.sk),
-  ]).do();
-  await algosdk.waitForConfirmation(algod, optTxn.txID(), 4);
+  const txns = [];
+  if (!accepted) {
+    const p = await algod.getTransactionParams().do();
+    txns.push(algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+      from: deployerAddr,
+      to: appAddr,
+      // Covers the ASA opt-in MBR plus the acceptance box MBR with a small cushion.
+      amount: 120000,
+      suggestedParams: p,
+    }));
+    txns.push(algosdk.makeApplicationCallTxnFromObject({
+      from: deployerAddr,
+      appIndex: APP_ID,
+      appArgs: [
+        new TextEncoder().encode('accept_asa'),
+        algosdk.encodeUint64(asaId),
+        algosdk.encodeUint64(admin),
+        algosdk.encodeUint64(lp),
+      ],
+      boxes: [{ appIndex: APP_ID, name: algosdk.encodeUint64(asaId) }],
+      suggestedParams: p,
+    }));
+  }
+
+  if (!opted) {
+    const p2 = await algod.getTransactionParams().do();
+    p2.fee = 2000;
+    p2.flatFee = true;
+    txns.push(algosdk.makeApplicationCallTxnFromObject({
+      from: deployerAddr,
+      appIndex: APP_ID,
+      appArgs: [new TextEncoder().encode('admin_optin'), algosdk.encodeUint64(asaId)],
+      foreignAssets: [asaId],
+      suggestedParams: p2,
+    }));
+  }
+
+  algosdk.assignGroupID(txns);
+  const signed = txns.map((txn) => txn.signTxn(deployer.sk));
+  await algod.sendRawTransaction(signed).do();
+  await algosdk.waitForConfirmation(algod, txns[txns.length - 1].txID(), 4);
+  return !accepted && !opted ? 'accepted+opted' : !accepted ? 'accepted' : 'opted';
 }
 
 async function main() {
@@ -136,7 +187,11 @@ async function main() {
   console.log(`Already registered: ${registered.size} ASAs`);
 
   let targetAsas;
-  if (mode === 'single') {
+  let explicitTargets = null;
+  if (mode === 'all-assist') {
+    explicitTargets = await getAllAssistTargets();
+    targetAsas = new Set(explicitTargets.keys());
+  } else if (mode === 'single') {
     const asaId = Number(args[args.indexOf('--asa') + 1]);
     targetAsas = new Set([asaId]);
   } else if (mode === 'criteria') {
@@ -147,9 +202,12 @@ async function main() {
 
   const toRegister = [];
   for (const asaId of targetAsas) {
-    if (registered.has(asaId)) continue;
-    if (!poolMap[asaId]) continue;
-    toRegister.push({ asaId, ...poolMap[asaId] });
+    const meta = explicitTargets?.get(asaId) || poolMap[asaId];
+    if (!meta) continue;
+    const accepted = await hasAcceptedBox(asaId);
+    const opted = registered.has(asaId);
+    if (accepted && opted) continue;
+    toRegister.push({ asaId, ...meta, accepted, opted });
   }
 
   console.log(`\nTo register: ${toRegister.length} properties`);
@@ -157,7 +215,7 @@ async function main() {
 
   if (dryRun) {
     for (const r of toRegister) {
-      console.log(`  ASA ${r.asaId} | ${r.name} | $${r.price?.toFixed(2)} | admin:${r.admin} lp:${r.lp}`);
+      console.log(`  ASA ${r.asaId} | ${r.name} | $${Number(r.price || 0).toFixed(2)} | accepted:${r.accepted} opted:${r.opted} | admin:${r.admin} lp:${r.lp}`);
     }
     return;
   }
@@ -173,9 +231,9 @@ async function main() {
   let ok = 0, fail = 0;
   for (const r of toRegister) {
     try {
-      await registerAsa(r.asaId, r.admin, r.lp);
+      const status = await registerAsa(r.asaId, r.admin, r.lp, { accepted: r.accepted, opted: r.opted });
       ok++;
-      process.stdout.write('.');
+      process.stdout.write(status === 'opted' ? 'o' : '.');
     } catch (e) {
       fail++;
       console.log(`\nFail ASA ${r.asaId} (${r.name}): ${e.message?.slice(0, 80)}`);
