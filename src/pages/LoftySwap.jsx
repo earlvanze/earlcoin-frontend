@@ -309,6 +309,9 @@ const LoftySwap = () => {
           rejectedUnits: rejected.map(h => h.unitName),
         });
 
+        console.info('LoftySwap network context', { NETWORK: import.meta.env.VITE_NETWORK, indexer: window.__vite_plugin_reporter_url__, algodUrl: import.meta.env.VITE_ALGOD_URL });
+        console.info('LoftySwap network context', { NETWORK: import.meta.env.VITE_NETWORK, indexerUrl: import.meta.env.VITE_INDEXER_URL, algodUrl: import.meta.env.VITE_ALGOD_URL });
+        console.info('LoftySwap network context', { NETWORK: import.meta.env.VITE_NETWORK, indexerUrl: import.meta.env.VITE_INDEXER_URL, algodUrl: import.meta.env.VITE_ALGOD_URL });
         // Fetch app's opt-in status for ASA readiness check
         let optedIn = new Set();
         if (appId && appId > 0) {
