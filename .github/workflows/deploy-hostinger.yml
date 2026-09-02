@@ -27,9 +27,19 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_STRIPE_PUBLISHABLE_KEY: ${{ secrets.VITE_STRIPE_PUBLISHABLE_KEY }}
+          VITE_SITE_URL: https://app.earlco.in
         run: |
+          case "$VITE_STRIPE_PUBLISHABLE_KEY" in
+            pk_live_*) ;;
+            *) echo "Production deploy requires a live Stripe publishable key" >&2; exit 1 ;;
+          esac
           npm ci --legacy-peer-deps
           npm run build
+          if grep -R -q 'pk_test_' dist; then
+            echo "Test Stripe credentials found in production bundle" >&2
+            exit 1
+          fi
 
       - name: Deploy to Hostinger via FTP
         env:
