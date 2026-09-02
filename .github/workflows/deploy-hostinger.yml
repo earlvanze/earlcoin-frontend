@@ -33,7 +33,8 @@ jobs:
 
       - name: Deploy to Hostinger via FTP
         env:
-          FTP_HOST: 157.173.209.157
+          FTP_HOST: hostinger.com
+          FTP_IP: 157.173.209.157
           FTP_USER: u847403612.app.earlco.in
           FTP_PASS: ${{ secrets.HOSTINGER_FTP_PW }}
         run: |
@@ -43,7 +44,8 @@ jobs:
             clean_file="${file#./}"
             curl -T "$file" "ftp://${FTP_HOST}/${clean_file}" \
               --user "${FTP_USER}:${FTP_PASS}" \
-              --ssl-reqd --ftp-create-dirs --silent
+              --resolve "${FTP_HOST}:21:${FTP_IP}" \
+              --ssl-reqd --ftp-create-dirs --silent --show-error
           done
 
       - name: Clear Cloudflare cache
