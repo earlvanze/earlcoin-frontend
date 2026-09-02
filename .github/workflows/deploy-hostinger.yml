@@ -23,13 +23,13 @@ jobs:
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Copy env vars
-        run: cp .env.local frontend/.env.local
-
       - name: Sync src to frontend/src
         run: rsync -av --delete src/ frontend/src/
 
       - name: Install and build
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
         run: |
           cd frontend
           npm ci
