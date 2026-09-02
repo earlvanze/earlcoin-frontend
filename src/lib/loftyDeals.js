@@ -1,5 +1,35 @@
 export const MARKETPLACE_API = '/api/lofty.php?source=marketplace';
 export const LP_MARKETPLACE_API = '/api/lofty.php?source=lp';
+export const LOFTY_ASSIST_API = '/api/lofty.php';
+
+export async function fetchLoftyPropertyItems({ includeAssistFallback = false } = {}) {
+  const responses = await Promise.allSettled([
+    fetch(MARKETPLACE_API).then((res) => {
+      if (!res.ok) throw new Error(`Lofty marketplace API ${res.status}`);
+      return res.json();
+    }),
+    ...(includeAssistFallback ? [fetch(LOFTY_ASSIST_API).then((res) => {
+      if (!res.ok) throw new Error(`LoftyAssist API ${res.status}`);
+      return res.json();
+    })] : []),
+  ]);
+
+  const items = [];
+  const seen = new Set();
+  for (const response of responses) {
+    if (response.status !== 'fulfilled' || !Array.isArray(response.value)) continue;
+    for (const item of response.value) {
+      const property = item?.property || {};
+      const key = property.id || property.slug || property.newAssetId || property.assetId;
+      if (key == null || seen.has(String(key))) continue;
+      seen.add(String(key));
+      items.push(item);
+    }
+  }
+
+  if (items.length === 0) throw new Error('Lofty property APIs returned no data');
+  return items;
+}
 
 export const normalizeAddressLookupKey = (value) => {
   if (!value) return '';
@@ -114,7 +144,35 @@ export const filterTradableDeals = (items = [], marketplaceIds = new Set()) => (
   items.filter((item) => shouldIncludeTradableDeal(item, marketplaceIds))
 );
 
-// Fetch live LP marketplace prices (176 pools)
+export const normalizeAssetAmount = (amount, decimals = 0) => (
+  Number(amount || 0) / Math.pow(10, Number(decimals || 0))
+);
+
+export const buildLpPriceMap = (payload) => {
+  const priceMap = {};
+  const pools = Array.isArray(payload)
+    ? payload
+    : (payload?.data?.pools || payload?.pools || []);
+
+  for (const item of pools) {
+    const property = item?.property || {};
+    const pool = item?.liquidityPool || item;
+    const price = pool?.price;
+    if (price == null) continue;
+
+    // Lofty's migrated tokens use newAssetId; retaining assetId keeps older
+    // balances priceable during the migration window.
+    for (const assetId of [property.newAssetId, property.assetId, pool?.property?.assetId]) {
+      if (assetId != null && assetId !== '') {
+        priceMap[Number(assetId)] = Number(price);
+      }
+    }
+  }
+
+  return priceMap;
+};
+
+// Fetch live LP marketplace prices.
 // Returns a map of assetId (Number) -> price (Number in USD)
 export async function fetchLpPrices() {
   try {
@@ -123,17 +181,7 @@ export async function fetchLpPrices() {
       console.error(`LP API ${res.status}`);
       return {};
     }
-    const data = await res.json();
-    const pools = data?.data?.pools || [];
-    const priceMap = {};
-    for (const pool of pools) {
-      const assetId = pool?.property?.assetId;
-      const price = pool?.price;
-      if (assetId != null && price != null) {
-        priceMap[Number(assetId)] = Number(price);
-      }
-    }
-    return priceMap;
+    return buildLpPriceMap(await res.json());
   } catch (err) {
     console.error('Failed to fetch LP prices:', err);
     return {};

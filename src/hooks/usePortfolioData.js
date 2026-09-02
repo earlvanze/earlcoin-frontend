@@ -1,5 +1,5 @@
 import { propertyFmv, getFmvPerToken as getFmvPerTokenLocal } from '@/data/propertyFmv';
-import { fetchLpPrices } from '@/lib/loftyDeals';
+import { fetchLpPrices, normalizeAssetAmount } from '@/lib/loftyDeals';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useState, useEffect } from 'react';
 import { 
@@ -152,6 +152,19 @@ export function usePortfolioData() {
           ...govAdminAssets.map(a => ({ ...a, wallet: 'GovAdmin' })),
         ];
 
+        // Lofty's replacement ASAs use six decimal places, while the legacy
+        // property ASAs used whole units. Resolve metadata from Algorand so
+        // migrated balances are displayed as tokens instead of micro-units.
+        const loftyAssetIds = [...new Set(
+          allAssets.filter((asset) => lookup[asset.assetId]).map((asset) => asset.assetId),
+        )];
+        const loftyAssetDecimals = new Map(await Promise.all(
+          loftyAssetIds.map(async (assetId) => {
+            const metadata = await fetchAssetMetadata(assetId);
+            return [assetId, metadata?.decimals ?? 0];
+          }),
+        ));
+
         const properties = [];
         let coolwoodTreasuryTokens = 0;
         let coolwoodEscrowTokens = 0;
@@ -185,9 +198,10 @@ export function usePortfolioData() {
 
           const prop = lookup[asset.assetId];
           if (prop) {
+            const tokenAmount = normalizeAssetAmount(asset.amount, loftyAssetDecimals.get(asset.assetId));
             const existing = properties.find(p => p.address === prop.address);
             if (existing) {
-              existing.tokens += asset.amount;
+              existing.tokens += tokenAmount;
               existing.value = existing.tokens * existing.lpPrice;
               const localFmvExisting = getFmvPerTokenLocal(existing.address, existing.totalTokens);
               const avmExisting = getAvmPerToken(avmLookup, existing.address, existing.propertyId, existing.totalTokens);
@@ -198,14 +212,14 @@ export function usePortfolioData() {
               properties.push({
                 address: prop.address,
                 state: prop.state,
-                tokens: asset.amount,
+                tokens: tokenAmount,
                 lpPrice: prop.lpPrice,
                 tokenValue: prop.tokenValue,
                 totalInvestment: prop.totalInvestment,
                 totalTokens: prop.totalTokens,
                 totalLoans: prop.totalLoans,
-                value: asset.amount * prop.lpPrice,
-                fmv: asset.amount * (localFmv || avm || prop.tokenValue),
+                value: tokenAmount * prop.lpPrice,
+                fmv: tokenAmount * (localFmv || avm || prop.tokenValue),
                 capRate: prop.capRate,
                 propertyId: prop.propertyId,
                 avmSource: avmLookup.byAddress[prop.address]?.avm_source || avmLookup.byPropertyId[prop.propertyId]?.avm_source || null,

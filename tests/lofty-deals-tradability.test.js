@@ -5,6 +5,8 @@ import {
   buildMarketplaceIdSet,
   buildLoftyPropertyLookup,
   attachLoftyPropertyMeta,
+  buildLpPriceMap,
+  normalizeAssetAmount,
   shouldIncludeTradableDeal,
 } from '../src/lib/loftyDeals.js';
 
@@ -33,6 +35,31 @@ test('shouldIncludeTradableDeal requires Active listing and marketplace membersh
     shouldIncludeTradableDeal({ listingStatus: 'Active', assetId: 7777, newAssetId: 8888 }, marketplaceIds),
     false,
   );
+});
+
+test('buildLpPriceMap supports the current Lofty marketplace SDK response and migrated ASAs', () => {
+  const prices = buildLpPriceMap([
+    {
+      property: { assetId: 237913743, newAssetId: 3686994105 },
+      liquidityPool: { price: 40.657227 },
+    },
+  ]);
+
+  assert.equal(prices[237913743], 40.657227);
+  assert.equal(prices[3686994105], 40.657227);
+});
+
+test('buildLpPriceMap retains compatibility with the legacy pool response', () => {
+  const prices = buildLpPriceMap({
+    data: { pools: [{ property: { assetId: 1001 }, price: 12.34 }] },
+  });
+
+  assert.equal(prices[1001], 12.34);
+});
+
+test('normalizeAssetAmount converts migrated ASA micro-units', () => {
+  assert.equal(normalizeAssetAmount(120000000, 6), 120);
+  assert.equal(normalizeAssetAmount(18, 0), 18);
 });
 
 test('attachLoftyPropertyMeta carries tradability fields from LoftyAssist matches', () => {
